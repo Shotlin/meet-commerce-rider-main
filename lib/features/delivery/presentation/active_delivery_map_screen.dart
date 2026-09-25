@@ -1,21 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart' as ll;
 import 'package:url_launcher/url_launcher.dart' as ul;
 
 import '../../../app/router.dart';
-import '../../../core/config/env.dart';
+import '../../../core/location/delivery_location_phase_sync.dart';
 import '../../../core/location/location_lifecycle_manager.dart';
 import '../../../core/location/rider_location_provider.dart';
-import '../../../core/maps/cached_tile_provider.dart';
 import '../../../core/maps/geo.dart';
-import '../../../core/maps/geo_bounds.dart';
+import '../../../core/maps/rider_map.dart';
 import '../../../core/maps/geo_point.dart';
-import '../../../core/maps/marker_assets.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_dimensions.dart';
@@ -25,27 +21,21 @@ import '../../../shared/widgets/app_button.dart';
 import '../application/active_delivery_controller.dart';
 import '../application/active_delivery_map_controller.dart';
 import '../application/delivery_socket_controller.dart';
-import '../data/delivery_api.dart' show CancelDeliveryReason;
 import '../domain/assignment_status.dart';
-import '../domain/collected_payment.dart';
 import '../domain/delivery_address.dart';
 import '../domain/delivery_order.dart';
-import '../domain/delivery_outcome.dart';
 import '../domain/store_info.dart';
-import 'camera_director.dart';
-import 'cancel_delivery_sheet.dart';
-import 'collect_payment_sheet.dart';
+import 'in_transit_sheet.dart' show AddressCard, InTransitSheet;
 import 'completion_summary_sheet.dart';
-import 'demo_complete_sheet.dart';
 
 /// Map-first screen the rider sees while completing an active
 /// delivery (R12).
 ///
 /// Three layers (top-down):
 ///
-/// 1. A long-lived [FlutterMap] with OSM raster tiles fed through
-///    the on-device [CachedTileProvider]. Marker / polyline updates
-///    flow through [ActiveDeliveryMapController] (a [ChangeNotifier])
+/// 1. A long-lived [RiderMap] rendering Ola's vector style through
+///    MapLibre native (Big Phase 12). Marker / route updates flow
+///    through [ActiveDeliveryMapController] (a [ChangeNotifier])
 ///    consumed via a [ValueListenableBuilder] reading the rider's
 ///    [ValueNotifier<GeoPoint?>] from [riderLocationNotifierProvider]
 ///    so the surrounding [Scaffold] never rebuilds when the rider
@@ -68,12 +58,13 @@ class ActiveDeliveryMapScreen extends ConsumerStatefulWidget {
 
 class _ActiveDeliveryMapScreenState
     extends ConsumerState<ActiveDeliveryMapScreen> {
-  late final MapController _mapController = MapController();
-  bool _mapReady = false;
+  /// Imperative camera handle from [RiderMap] (recenter).
+  RiderMapHandle? _mapHandle;
 
-  /// Whether [MarkerAssets.ensureWarmedFor] has populated the cache
-  /// for the active DPR. Kept for API parity with the bitmap era.
-  bool _markersWarmed = false;
+  /// Drives the state-aware GPS location profile (§23) from the
+  /// delivery phase: waiting → accepted → in-transit → waiting.
+  final DeliveryLocationPhaseSync _locationPhaseSync =
+      DeliveryLocationPhaseSync();
 
   ValueNotifier<GeoPoint?>? _riderNotifier;
   void Function()? _riderListener;
@@ -107,18 +98,11 @@ class _ActiveDeliveryMapScreenState
 
   Future<void> _warmMarkers() async {
     if (!mounted) return;
-    final double dpr = MediaQuery.devicePixelRatioOf(context);
-    final MarkerAssets assets = ref.read<MarkerAssets>(markerAssetsProvider);
-    if (!assets.isWarmedFor(dpr)) {
-      await assets.ensureWarmedFor(dpr);
-    }
-    if (!mounted) return;
-    setState(() => _markersWarmed = true);
     final DeliveryOrder? order = ref
         .read<ActiveDeliveryController>(activeDeliveryControllerProvider)
         .current;
     if (order != null) {
-      _applyOrderToMap(order);
+      unawaited(_applyOrderToMap(order));
     }
     _bindRiderNotifier();
   }
@@ -158,16 +142,20 @@ class _ActiveDeliveryMapScreenState
     final ActiveDeliveryMapController map = ref
         .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider);
     map.updateRiderPosition(next);
-    unawaited(_maybeAutoFit());
   }
 
-  void _applyOrderToMap(DeliveryOrder order) {
+  Future<void> _applyOrderToMap(DeliveryOrder order) async {
     final ActiveDeliveryMapController map = ref
         .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider);
     final StoreInfo? store = ref
         .read<AsyncValue<StoreInfo>>(storeInfoProvider)
         .value;
     map.applyOrder(order, store);
+
+    // Requirement §23: tracking frequency follows the delivery phase.
+    // Fire-and-forget — the sync is idempotent and the manager
+    // early-returns on unchanged profiles.
+    await _locationPhaseSync.apply(map.phase, ref.read<LocationLifecycleManager>(locationLifecycleManagerProvider));
   }
 
   @override
@@ -181,43 +169,16 @@ class _ActiveDeliveryMapScreenState
   // ---------------------------------------------------------------------------
 
   void _onUserPan() {
-    final CameraDirector director = ref.read<CameraDirector>(
-      cameraDirectorProvider,
-    );
-    director.onUserPan();
     ref
         .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider)
         .setShowRecenterButton(true);
   }
 
-  Future<void> _onRecenterPressed() async {
-    final CameraDirector director = ref.read<CameraDirector>(
-      cameraDirectorProvider,
-    );
-    final ActiveDeliveryMapController map = ref
-        .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider);
-    final GeoBounds? bounds = map.phaseBounds;
-    if (bounds == null) return;
-    if (!_mapReady) return;
-    await director.recenter(controller: _mapController, bounds: bounds);
-    if (!mounted) return;
-    map.setShowRecenterButton(false);
-  }
-
-  Future<void> _maybeAutoFit() async {
-    if (!_mapReady) return;
-    final ActiveDeliveryMapController map = ref
-        .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider);
-    final GeoBounds? bounds = map.phaseBounds;
-    if (bounds == null) return;
-    final CameraDirector director = ref.read<CameraDirector>(
-      cameraDirectorProvider,
-    );
-    await director.maybeFitBounds(
-      controller: _mapController,
-      bounds: bounds,
-      now: DateTime.now(),
-    );
+  void _onRecenterPressed() {
+    _mapHandle?.recenter();
+    ref
+        .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider)
+        .setShowRecenterButton(false);
   }
 
   // ---------------------------------------------------------------------------
@@ -238,31 +199,13 @@ class _ActiveDeliveryMapScreenState
       return const _ActiveDeliveryGoneScreen();
     }
 
-    if (!_markersWarmed) {
-      return const Scaffold(
-        backgroundColor: AppColors.white,
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.charcoal),
-        ),
-      );
-    }
-
     if (order.orderId != _appliedOrderId ||
         order.assignmentStatus != _appliedStatus) {
-      final bool phaseChanged =
-          _appliedOrderId == order.orderId &&
-          _appliedStatus != order.assignmentStatus;
       _appliedOrderId = order.orderId;
       _appliedStatus = order.assignmentStatus;
-      if (phaseChanged) {
-        ref.read<CameraDirector>(cameraDirectorProvider).resetPhaseFit();
-      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _applyOrderToMap(order);
-        if (phaseChanged) {
-          unawaited(_maybeAutoFit());
-        }
+        unawaited(_applyOrderToMap(order));
       });
     }
 
@@ -288,13 +231,7 @@ class _ActiveDeliveryMapScreenState
                   Positioned.fill(
                     child: _MapLayer(
                       order: order,
-                      mapController: _mapController,
-                      onMapReady: () {
-                        _mapReady = true;
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          unawaited(_maybeAutoFit());
-                        });
-                      },
+                      onReady: (RiderMapHandle handle) => _mapHandle = handle,
                       onUserPan: _onUserPan,
                     ),
                   ),
@@ -366,50 +303,12 @@ class _ActiveDeliveryMapScreenState
 class _MapLayer extends ConsumerWidget {
   const _MapLayer({
     required this.order,
-    required this.mapController,
-    required this.onMapReady,
+    required this.onReady,
     required this.onUserPan,
   });
 
   final DeliveryOrder order;
-  final MapController mapController;
-  final VoidCallback onMapReady;
-  final VoidCallback onUserPan;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ValueNotifier<GeoPoint?> rider = ref.read<ValueNotifier<GeoPoint?>>(
-      riderLocationNotifierProvider,
-    );
-
-    return ValueListenableBuilder<GeoPoint?>(
-      valueListenable: rider,
-      builder: (BuildContext context, GeoPoint? riderPos, _) {
-        return _MapStateBuilder(
-          order: order,
-          riderPos: riderPos,
-          mapController: mapController,
-          onMapReady: onMapReady,
-          onUserPan: onUserPan,
-        );
-      },
-    );
-  }
-}
-
-class _MapStateBuilder extends ConsumerWidget {
-  const _MapStateBuilder({
-    required this.order,
-    required this.riderPos,
-    required this.mapController,
-    required this.onMapReady,
-    required this.onUserPan,
-  });
-
-  final DeliveryOrder order;
-  final GeoPoint? riderPos;
-  final MapController mapController;
-  final VoidCallback onMapReady;
+  final ValueChanged<RiderMapHandle> onReady;
   final VoidCallback onUserPan;
 
   @override
@@ -418,51 +317,76 @@ class _MapStateBuilder extends ConsumerWidget {
         .watch<ActiveDeliveryMapController>(
           activeDeliveryMapControllerProvider,
         );
-    final CachedTileProvider tileProvider = ref.watch<CachedTileProvider>(
-      cachedTileProviderProvider,
+    final ValueNotifier<GeoPoint?> rider = ref.read<ValueNotifier<GeoPoint?>>(
+      riderLocationNotifierProvider,
     );
-    final Env env = ref.watch<Env>(envProvider);
 
-    final GeoPoint seed = riderPos ?? map.storePosition ?? _defaultTarget;
+    return ValueListenableBuilder<GeoPoint?>(
+      valueListenable: rider,
+      builder: (BuildContext context, GeoPoint? riderPos, _) {
+        // Keep the controller's rider marker/camera state in sync with
+        // the notifier (the surrounding screen never rebuilds on GPS
+        // ticks — R25.1).
+        ref
+            .read<ActiveDeliveryMapController>(
+              activeDeliveryMapControllerProvider,
+            )
+            .updateRiderPosition(
+              riderPos ?? map.riderPosition ?? _defaultTarget,
+            );
+        return RiderMap(
+          availability: ref.watch(olaMapsAvailabilityProvider.future),
+          markers: map.markers,
+          route: map.route,
+          followTarget: riderPos ?? map.riderPosition,
+          fitPoints: map.fitPoints,
+          pitched: false,
+          initialZoom: 14,
+          onUserPan: onUserPan,
+          onReady: onReady,
+          fallbackBuilder: (BuildContext context) =>
+              const _MapUnavailablePanel(),
+        );
+      },
+    );
+  }
+}
 
-    return FlutterMap(
-      mapController: mapController,
-      options: MapOptions(
-        initialCenter: seed.toLatLng(),
-        initialZoom: 14,
-        minZoom: 3,
-        maxZoom: 18,
-        interactionOptions: const InteractionOptions(
-          flags:
-              InteractiveFlag.pinchZoom |
-              InteractiveFlag.drag |
-              InteractiveFlag.doubleTapZoom |
-              InteractiveFlag.flingAnimation,
+/// Shown when Ola Maps isn't configured dashboard-side — an honest
+/// surface, not a blank canvas (no-placeholder rule).
+class _MapUnavailablePanel extends StatelessWidget {
+  const _MapUnavailablePanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: Color(0xFFEAECEF),
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.map_outlined, size: 40, color: Color(0xFF667085)),
+              SizedBox(height: 12),
+              Text(
+                'Map unavailable',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF101114),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Ola Maps is not configured for this environment yet.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Color(0xFF667085)),
+              ),
+            ],
+          ),
         ),
-        onMapReady: onMapReady,
-        onPositionChanged: (MapCamera camera, bool hasGesture) {
-          if (hasGesture) {
-            onUserPan();
-          }
-        },
       ),
-      children: <Widget>[
-        TileLayer(
-          urlTemplate: env.tileUrlTemplate,
-          userAgentPackageName: 'com.meetcommerce.rider',
-          tileProvider: tileProvider,
-          maxNativeZoom: 18,
-          maxZoom: 19,
-        ),
-        PolylineLayer(polylines: map.polylines),
-        MarkerLayer(markers: map.markerWidgets),
-        const RichAttributionWidget(
-          alignment: AttributionAlignment.bottomLeft,
-          attributions: <SourceAttribution>[
-            TextSourceAttribution('OpenStreetMap contributors'),
-          ],
-        ),
-      ],
     );
   }
 }
@@ -616,7 +540,11 @@ class _NavTopBarCallButton extends ConsumerWidget {
         }
       },
       customBorder: const CircleBorder(),
-      child: const Icon(Icons.call_outlined, size: 18, color: AppColors.mapBlue),
+      child: const Icon(
+        Icons.call_outlined,
+        size: 18,
+        color: AppColors.mapBlue,
+      ),
     );
   }
 }
@@ -940,7 +868,7 @@ class _PhaseBody extends ConsumerWidget {
           switch (order.assignmentStatus) {
             AssignmentStatus.assigned ||
             AssignmentStatus.accepted => _AcceptedSheet(order: order),
-            AssignmentStatus.inTransit => _InTransitSheet(order: order),
+            AssignmentStatus.inTransit => InTransitSheet(order: order),
             AssignmentStatus.delivered => _DeliveredSheet(order: order),
             AssignmentStatus.cancelled => const SizedBox.shrink(),
           },
@@ -948,6 +876,23 @@ class _PhaseBody extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// §11 arrival rule: a real GPS fix within [radiusMeters] of the
+/// store's own coordinates reads as "arrived at the store". Returns
+/// `false` when either the fix or the store coordinates are missing —
+/// no arrival is ever fabricated. Exposed for tests.
+@visibleForTesting
+bool isRiderArrivedAtStore({
+  required GeoPoint? riderPosition,
+  required DeliveryOrder order,
+  double radiusMeters = 100,
+}) {
+  final double? lat = order.storeAddress.lat;
+  final double? lng = order.storeAddress.lng;
+  if (riderPosition == null || lat == null || lng == null) return false;
+  final double meters = Geo.distanceMeters(riderPosition, GeoPoint(lat, lng));
+  return meters <= radiusMeters;
 }
 
 /// The pickup-navigation bottom sheet (design §11 bottom sheet + §12):
@@ -962,9 +907,6 @@ class _AcceptedSheet extends ConsumerWidget {
 
   final DeliveryOrder order;
 
-  /// Arrival threshold (design §11 "arrival state is shown"): a real
-  /// GPS fix within this distance of the store's own coordinates reads
-  /// as "arrived". No geofence is fabricated when either is missing.
   static const double _arrivalRadiusMeters = 100;
 
   @override
@@ -973,14 +915,18 @@ class _AcceptedSheet extends ConsumerWidget {
     final GeoPoint? riderPosition = ref
         .watch(riderLocationNotifierProvider)
         .value;
-    final bool arrived = _isArrived(riderPosition);
+    final bool arrived = isRiderArrivedAtStore(
+      riderPosition: riderPosition,
+      order: order,
+      radiusMeters: _arrivalRadiusMeters,
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _AddressCard(tag: 'Pickup', title: addr.name, subtitle: addr.address),
+          AddressCard(tag: 'Pickup', title: addr.name, subtitle: addr.address),
           const SizedBox(height: 8),
           Text(
             'Order #${order.orderNumber}'
@@ -1019,20 +965,14 @@ class _AcceptedSheet extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           AppButton(
-            label: arrived ? "You're here — scan pickup code" : 'Scan pickup code',
+            label: arrived
+                ? "You're here — scan pickup code"
+                : 'Scan pickup code',
             onPressed: () => unawaited(context.push(AppRoutes.qrScan)),
           ),
         ],
       ),
     );
-  }
-
-  bool _isArrived(GeoPoint? riderPosition) {
-    final double? lat = order.storeAddress.lat;
-    final double? lng = order.storeAddress.lng;
-    if (riderPosition == null || lat == null || lng == null) return false;
-    final double meters = Geo.distanceMeters(riderPosition, GeoPoint(lat, lng));
-    return meters <= _arrivalRadiusMeters;
   }
 
   Future<void> _onNavigate(WidgetRef ref, double lat, double lng) async {
@@ -1066,7 +1006,11 @@ class _ArrivedStrip extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          const Icon(Icons.location_on_outlined, size: 18, color: AppColors.success),
+          const Icon(
+            Icons.location_on_outlined,
+            size: 18,
+            color: AppColors.success,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1077,209 +1021,6 @@ class _ArrivedStrip extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _InTransitSheet extends ConsumerWidget {
-  const _InTransitSheet({required this.order});
-
-  final DeliveryOrder order;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final DeliveryAddress addr = order.customerAddress;
-    final bool showDemo = ref.watch<Env>(envProvider).enableDevAffordances;
-    final ActiveDeliveryController deliveryController = ref
-        .watch<ActiveDeliveryController>(activeDeliveryControllerProvider);
-    final bool isCod = order.paymentMethod.toUpperCase() == 'COD';
-    final CollectedPayment? collected = deliveryController.collectedPaymentFor(
-      order.orderId,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _AddressCard(
-            tag: 'Drop',
-            title: addr.name.isEmpty ? addr.address : addr.name,
-            subtitle: addr.landmark != null && addr.landmark!.isNotEmpty
-                ? '${addr.address} • ${addr.landmark}'
-                : addr.address,
-            paymentMethod: order.paymentMethod,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: <Widget>[
-              if (addr.phone != null && addr.phone!.isNotEmpty) ...<Widget>[
-                Expanded(
-                  child: AppButton(
-                    label: 'Call customer',
-                    variant: AppButtonVariant.secondary,
-                    leadingIcon: Icons.call_outlined,
-                    onPressed: () => _onCall(ref, addr.phone!),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: AppButton(
-                  label: 'Navigate',
-                  variant: AppButtonVariant.secondary,
-                  leadingIcon: Icons.navigation_outlined,
-                  onPressed: addr.lat != null && addr.lng != null
-                      ? () => _onNavigate(ref, addr.lat!, addr.lng!)
-                      : null,
-                ),
-              ),
-            ],
-          ),
-          if (isCod) ...<Widget>[
-            const SizedBox(height: 8),
-            AppButton(
-              label: collected == null
-                  ? 'Collect payment'
-                  : 'Payment collected · Edit',
-              variant: collected == null
-                  ? AppButtonVariant.primary
-                  : AppButtonVariant.secondary,
-              leadingIcon: collected == null
-                  ? Icons.qr_code_outlined
-                  : Icons.check_circle_outline,
-              onPressed: () => _onCollectPayment(context, ref),
-            ),
-          ],
-          const SizedBox(height: 8),
-          AppButton(
-            label: 'Deliver',
-            onPressed: (!isCod || collected != null)
-                ? () => _onDeliver(context, collected, ref)
-                : null,
-          ),
-          if (showDemo) ...<Widget>[
-            const SizedBox(height: 4),
-            TextButton(
-              onPressed: () => _onDemoComplete(context, ref),
-              child: Text(
-                'Demo complete',
-                style: AppTypography.label.copyWith(color: AppColors.muted),
-              ),
-            ),
-          ],
-          const SizedBox(height: 4),
-          TextButton(
-            onPressed: () => _onCancelDelivery(context, ref),
-            child: Text(
-              'Cancel delivery',
-              style: AppTypography.label.copyWith(color: AppColors.danger),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Opens external navigation to the single drop destination.
-  Future<void> _onNavigate(WidgetRef ref, double lat, double lng) async {
-    final ExternalNavigationLauncher launcher = ref
-        .read<ExternalNavigationLauncher>(externalNavLauncherProvider);
-    await launcher.openDrivingDirections(destLat: lat, destLng: lng);
-  }
-
-  Future<void> _onCall(WidgetRef ref, String phone) async {
-    final UrlLauncherDelegate launcher = ref.read<UrlLauncherDelegate>(
-      urlLauncherDelegateProvider,
-    );
-    final Uri uri = Uri(scheme: 'tel', path: phone);
-    if (await launcher.canLaunch(uri)) {
-      await launcher.launch(uri, mode: ul.LaunchMode.externalApplication);
-    }
-  }
-
-  /// Opens the payment-collection sheet (UPI QR + cash/UPI amount entry)
-  /// and records the result on [ActiveDeliveryController] so the "Deliver"
-  /// button un-disables. Only reachable for COD orders — see the `isCod`
-  /// gate in [build].
-  Future<void> _onCollectPayment(BuildContext context, WidgetRef ref) async {
-    final CollectedPayment? payment = await showCollectPaymentSheet(
-      context,
-      order,
-    );
-    if (payment == null) return;
-    ref
-        .read<ActiveDeliveryController>(activeDeliveryControllerProvider)
-        .recordCollectedPayment(order.orderId, payment);
-  }
-
-  Future<void> _onDeliver(
-    BuildContext context,
-    CollectedPayment? collected,
-    WidgetRef ref,
-  ) async {
-    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
-      context,
-    );
-
-    final DeliveryResult result = await ref
-        .read<ActiveDeliveryController>(activeDeliveryControllerProvider)
-        .deliverDirect(
-          order.orderId,
-          cashCollected: collected?.cashCollected,
-          upiCollected: collected?.upiCollected,
-        );
-    switch (result) {
-      case DeliveryResultSuccess():
-        return;
-      case DeliveryResultStale(message: final String message):
-      case DeliveryResultFailure(message: final String message):
-      case DeliveryResultInvalidOtp(message: final String message):
-      case DeliveryResultOtpExpired(message: final String message):
-      case DeliveryResultProofFailed(message: final String message):
-        messenger?.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
-  Future<void> _onDemoComplete(BuildContext context, WidgetRef ref) async {
-    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
-      context,
-    );
-    final Env env = ref.read<Env>(envProvider);
-    final DeliveryOutcome outcome = await showDemoCompleteSheet(
-      context,
-      order,
-      env: env,
-    );
-    switch (outcome) {
-      case DeliveryOutcomeDelivered():
-      case DeliveryOutcomeCancelled():
-        return;
-      case DeliveryOutcomeFailed(message: final String message):
-        messenger?.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
-  /// Cancels the delivery when the customer refuses the order or can't
-  /// be reached at the drop location. Once the controller clears the
-  /// active delivery, the screen-level watcher auto-redirects to home.
-  Future<void> _onCancelDelivery(BuildContext context, WidgetRef ref) async {
-    final CancelDeliveryReason? reason = await showCancelDeliverySheet(context);
-    if (reason == null) return;
-    if (!context.mounted) return;
-
-    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
-      context,
-    );
-    final ActiveDeliveryController controller = ref
-        .read<ActiveDeliveryController>(activeDeliveryControllerProvider);
-    final bool cancelled = await controller.cancelDelivery(
-      order.orderId,
-      reason.wire,
-    );
-    if (!cancelled) {
-      messenger?.showSnackBar(
-        const SnackBar(content: Text('Could not cancel delivery. Try again')),
-      );
-    }
   }
 }
 
@@ -1340,71 +1081,6 @@ class _DeliveredSheet extends ConsumerWidget {
   }
 }
 
-class _AddressCard extends StatelessWidget {
-  const _AddressCard({
-    required this.tag,
-    required this.title,
-    required this.subtitle,
-    this.paymentMethod,
-  });
-
-  final String tag;
-  final String title;
-  final String subtitle;
-
-  /// Raw `payment_method` wire value (`COD`, `ONLINE`, `WALLET`, ...).
-  /// When non-null, a small payment-status pill renders below the address.
-  final String? paymentMethod;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppColors.black,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              tag,
-              style: AppTypography.micro.copyWith(color: AppColors.white),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: AppTypography.heading.copyWith(color: AppColors.charcoal),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: AppTypography.body.copyWith(color: AppColors.muted),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (paymentMethod != null && paymentMethod!.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 10),
-            _PaymentMethodPill(paymentMethod: paymentMethod!),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Small pill showing the order's payment method — amber for Cash on
-/// Delivery (money still needs collecting), green for anything already
-/// paid (`ONLINE`, `WALLET`).
 class _PaymentMethodPill extends StatelessWidget {
   const _PaymentMethodPill({required this.paymentMethod});
 
@@ -1443,9 +1119,3 @@ class _PaymentMethodPill extends StatelessWidget {
     );
   }
 }
-
-// `ll` is imported above; the screen does not directly construct
-// `latlong2.LatLng` values, but the import keeps the link to the
-// geometry layer explicit for future maintenance.
-// ignore: unused_element
-typedef _MapLatLng = ll.LatLng;

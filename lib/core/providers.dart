@@ -19,7 +19,6 @@ import '../features/delivery/data/delivery_api.dart';
 import '../features/delivery/data/delivery_repository.dart';
 import '../features/delivery/domain/rider_profile.dart';
 import '../features/delivery/domain/store_info.dart';
-import '../features/delivery/presentation/camera_director.dart';
 import '../features/earnings/application/earnings_controller.dart';
 import '../features/history/application/history_controller.dart';
 import '../features/home/application/home_dashboard_controller.dart';
@@ -35,8 +34,7 @@ import 'location/location_permission_service.dart';
 import 'location/location_service.dart';
 import 'location/rider_location_provider.dart';
 import 'location/rider_location_publisher.dart';
-import 'maps/cached_tile_provider.dart';
-import 'maps/marker_assets.dart';
+import 'maps/rider_maps_service.dart';
 import 'network/api_client.dart';
 import 'network/auth_interceptor.dart';
 import 'permissions/camera_permission_service.dart';
@@ -352,25 +350,12 @@ pickupSessionControllerProvider =
 // Active delivery map (R12, R25)
 // ---------------------------------------------------------------------------
 
-/// Shared [MarkerAssets] instance. The active-delivery map screen
-/// warms the descriptors for the device's pixel ratio on first
-/// frame; subsequent screen mounts reuse the cached bitmaps (R25.5).
-final Provider<MarkerAssets> markerAssetsProvider = Provider<MarkerAssets>(
-  (Ref ref) => MarkerAssets(),
-);
-
-/// On-device interim raster tile cache for the Flutter map renderer.
-///
-/// INTERIM ONLY — removed in Big Phase 12 when Ola Maps becomes the
-/// production map/navigation stack.
-final Provider<CachedTileProvider> cachedTileProviderProvider =
-    Provider<CachedTileProvider>((Ref ref) {
-      final Env env = ref.watch(envProvider);
-      final CachedTileProvider provider = CachedTileProvider(
-        userAgent: 'meetcommerce-rider-app/0.1.0 (${env.flavor.name})',
-        tileUrlTemplate: env.tileUrlTemplate,
-      );
-      return provider;
+/// Whether Ola Maps is configured dashboard-side, and the style URL to
+/// render it with. Kept alive so the style resolves once per session
+/// instead of per map mount.
+final FutureProvider<OlaMapsAvailability> olaMapsAvailabilityProvider =
+    FutureProvider<OlaMapsAvailability>((Ref ref) async {
+      return ref.watch(riderMapsServiceProvider).getStyle();
     });
 
 /// Long-lived publisher that pumps rider GPS samples into
@@ -406,22 +391,18 @@ final Provider<LocationLifecycleManager> locationLifecycleManagerProvider =
       return manager;
     });
 
-/// Camera autopilot for the active-delivery map. One [CameraDirector]
-/// per session — the screen reads it on mount and feeds it pan
-/// timestamps and recenter requests.
-final Provider<CameraDirector> cameraDirectorProvider =
-    Provider<CameraDirector>((Ref ref) => CameraDirector());
-
-/// Marker / polyline / phase state for the active-delivery map screen.
+/// Marker / route / phase state for the active-delivery map screen.
 ///
 /// Lives next to the [ActiveDeliveryController] so the screen can
 /// `applyOrder` whenever the active order or its assignment status
 /// changes, and `updateRiderPosition` whenever a new GPS fix arrives.
+/// Routes resolve through the Ola Directions proxy via
+/// [riderMapsServiceProvider].
 final ChangeNotifierProvider<ActiveDeliveryMapController>
 activeDeliveryMapControllerProvider =
     ChangeNotifierProvider<ActiveDeliveryMapController>((Ref ref) {
       return ActiveDeliveryMapController(
-        markerAssets: ref.watch<MarkerAssets>(markerAssetsProvider),
+        mapsService: ref.watch(riderMapsServiceProvider),
       );
     });
 

@@ -15,7 +15,9 @@
 import 'package:glados/glados.dart';
 
 import 'package:meet_commerce_rider_main/core/maps/geo_point.dart';
-import 'package:meet_commerce_rider_main/core/maps/marker_assets.dart';
+import 'package:meet_commerce_rider_main/core/maps/rider_map.dart';
+import 'package:meet_commerce_rider_main/core/maps/rider_maps_service.dart';
+import 'package:mocktail/mocktail.dart' as mocktail;
 import 'package:meet_commerce_rider_main/features/delivery/application/active_delivery_map_controller.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/assignment_status.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/delivery_address.dart';
@@ -73,11 +75,24 @@ DeliveryOrder _orderWithValidCustomerCoords({
 }
 
 ActiveDeliveryMapController _newController() {
-  final MarkerAssets assets = MarkerAssets();
-  // ignore: invalid_use_of_visible_for_testing_member
-  assets.warmForTesting();
-  return ActiveDeliveryMapController(markerAssets: assets);
+  mocktail.registerFallbackValue(const GeoPoint(0, 0));
+  final _MockRiderMapsService mapsService = _MockRiderMapsService();
+  mocktail
+      .when(() => mapsService.getRoute(mocktail.any(), mocktail.any()))
+      .thenAnswer((Invocation invocation) async {
+        final GeoPoint origin = invocation.positionalArguments[0] as GeoPoint;
+        final GeoPoint destination =
+            invocation.positionalArguments[1] as GeoPoint;
+        return RiderRoute(
+          points: <GeoPoint>[origin, destination],
+          distanceMeters: 1000,
+          durationSeconds: 200,
+        );
+      });
+  return ActiveDeliveryMapController(mapsService: mapsService);
 }
+
+class _MockRiderMapsService extends mocktail.Mock implements RiderMapsService {}
 
 void main() {
   group('Property 2: Preservation - Valid Customer Coordinates', () {
@@ -91,7 +106,6 @@ void main() {
       (double, double) riderCoords,
       AssignmentStatus status,
     ) {
-      MarkerAssets.resetForTesting();
       final ActiveDeliveryMapController controller = _newController();
 
       final (double customerLat, double customerLng) = customerCoords;
@@ -113,10 +127,23 @@ void main() {
       expect(controller.customerPosition!.latitude, customerLat);
       expect(controller.customerPosition!.longitude, customerLng);
 
-      final MarkerEntry? customerMarker = controller.markers['customer'];
-      expect(customerMarker, isNotNull);
-      expect(customerMarker!.position.latitude, customerLat);
-      expect(customerMarker.position.longitude, customerLng);
+      // Big Phase 12: markers are phase-scoped — the customer marker
+      // exists in the in-transit phase, the store marker during pickup;
+      // valid coordinates always place the active destination marker at
+      // exactly the coordinates the order carries.
+      if (controller.phase == LocationPhase.toCustomer) {
+        final RiderMarkerSpec customerMarker = controller.markers.firstWhere(
+          (RiderMarkerSpec m) => m.id == 'customer',
+        );
+        expect(customerMarker.position.latitude, customerLat);
+        expect(customerMarker.position.longitude, customerLng);
+      } else if (controller.phase == LocationPhase.toStore) {
+        final RiderMarkerSpec storeMarker = controller.markers.firstWhere(
+          (RiderMarkerSpec m) => m.id == 'store',
+        );
+        expect(storeMarker.position.latitude, 12.97);
+        expect(storeMarker.position.longitude, 77.59);
+      }
 
       expect(controller.customerLocationApproximate, isFalse);
     });
@@ -129,7 +156,6 @@ void main() {
       (double, double) customerCoords,
       (double, double) riderCoords,
     ) {
-      MarkerAssets.resetForTesting();
       final ActiveDeliveryMapController controller = _newController();
 
       final (double customerLat, double customerLng) = customerCoords;
@@ -148,13 +174,13 @@ void main() {
       controller.applyOrder(order, null);
 
       expect(controller.phase, LocationPhase.toCustomer);
-      expect(controller.polylines, isNotEmpty);
-      final points = controller.polylines.last.points;
-      expect(points, hasLength(2));
-      expect(points.first.latitude, riderLat);
-      expect(points.first.longitude, riderLng);
-      expect(points.last.latitude, customerLat);
-      expect(points.last.longitude, customerLng);
+      // Route resolves asynchronously through the Ola facade; the
+      // camera framing carries the rider→customer geometry immediately.
+      expect(controller.fitPoints, contains(GeoPoint(riderLat, riderLng)));
+      expect(
+        controller.fitPoints,
+        contains(GeoPoint(customerLat, customerLng)),
+      );
     });
 
     Glados3<(double, double), (double, double), (double, double)>(
@@ -167,7 +193,6 @@ void main() {
       (double, double) initialRiderCoords,
       (double, double) newRiderCoords,
     ) {
-      MarkerAssets.resetForTesting();
       final ActiveDeliveryMapController controller = _newController();
 
       final (double customerLat, double customerLng) = customerCoords;
@@ -198,9 +223,10 @@ void main() {
       expect(controller.customerPosition!.latitude, customerLat);
       expect(controller.customerPosition!.longitude, customerLng);
 
-      final MarkerEntry? customerMarker = controller.markers['customer'];
-      expect(customerMarker, isNotNull);
-      expect(customerMarker!.position.latitude, customerLat);
+      final RiderMarkerSpec customerMarker = controller.markers.firstWhere(
+        (RiderMarkerSpec m) => m.id == 'customer',
+      );
+      expect(customerMarker.position.latitude, customerLat);
     });
 
     Glados2<(double, double), AssignmentStatus>(
@@ -209,7 +235,6 @@ void main() {
     ).test(
       'Test 2.4: Customer coordinates available for navigation when valid',
       ((double, double) customerCoords, AssignmentStatus status) {
-        MarkerAssets.resetForTesting();
         final ActiveDeliveryMapController controller = _newController();
 
         final (double customerLat, double customerLng) = customerCoords;
@@ -237,7 +262,6 @@ void main() {
       'Preservation: Store location fallback logic unchanged when customer '
       'coordinates are valid',
       ((double, double) customerCoords) {
-        MarkerAssets.resetForTesting();
         final ActiveDeliveryMapController controller = _newController();
 
         final (double customerLat, double customerLng) = customerCoords;
@@ -270,7 +294,6 @@ void main() {
       (double, double) customerCoords,
       AssignmentStatus terminalStatus,
     ) {
-      MarkerAssets.resetForTesting();
       final ActiveDeliveryMapController controller = _newController();
 
       final (double customerLat, double customerLng) = customerCoords;
@@ -288,14 +311,13 @@ void main() {
       controller.applyOrder(order, null);
 
       expect(controller.phase, LocationPhase.none);
-      expect(controller.polylines, isEmpty);
+      expect(controller.route, isNull);
       expect(controller.customerPosition, isNotNull);
     });
 
     Glados<(double, double)>(_validCoordGen).test(
       'Preservation: Rider position updates throttled under 5 meters',
       ((double, double) customerCoords) {
-        MarkerAssets.resetForTesting();
         final ActiveDeliveryMapController controller = _newController();
 
         final (double customerLat, double customerLng) = customerCoords;

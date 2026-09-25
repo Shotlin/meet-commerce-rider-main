@@ -162,64 +162,36 @@ void main() {
       }
     });
 
-    test('with an active delivery still awaiting pickup, is kept on the '
-        'scanner flow', () {
+    test('with an active delivery, is kept on the delivery map — whose '
+        'toStore phase is the pickup navigation screen', () {
       expect(
         computeSessionRedirect(
           session: approved,
           location: AppRoutes.home,
           hasActiveDelivery: true,
-          needsPickup: true,
-        ),
-        AppRoutes.qrScan,
-      );
-      expect(
-        computeSessionRedirect(
-          session: approved,
-          location: AppRoutes.active,
-          hasActiveDelivery: true,
-          needsPickup: true,
-        ),
-        AppRoutes.qrScan,
-        reason:
-            'an unpicked-up order must not leave the rider on the '
-            'delivery map',
-      );
-    });
-
-    test('with a picked-up (in-transit) delivery, is kept on the delivery '
-        'map', () {
-      expect(
-        computeSessionRedirect(
-          session: approved,
-          location: AppRoutes.home,
-          hasActiveDelivery: true,
-          needsPickup: false,
         ),
         AppRoutes.active,
       );
       expect(
         computeSessionRedirect(
           session: approved,
-          location: AppRoutes.qrScan,
+          location: AppRoutes.earnings,
           hasActiveDelivery: true,
-          needsPickup: false,
         ),
         AppRoutes.active,
         reason:
-            'once pickup is confirmed the scanner has nothing left '
-            'to scan — the rider moves to the delivery map',
+            'a live delivery must not be left running in the '
+            'background while the rider browses other tabs',
       );
     });
 
-    test('the QR scanner is exempt from its own redirect while pickup is '
-        'pending', () {
+    test('the QR scanner is exempt from the redirect while a delivery is '
+        'active (it is pushed from the pickup screen)', () {
       expect(
         computeSessionRedirect(
           session: approved,
           location: AppRoutes.qrScan,
           hasActiveDelivery: true,
-          needsPickup: true,
         ),
         isNull,
         reason:

@@ -1,10 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'package:latlong2/latlong.dart' as ll;
 
 /// An immutable latitude/longitude value type that replaces
 /// `google_maps_flutter.LatLng` across the application layer.
 ///
-/// Bridges to/from [ll.LatLng] at the `flutter_map` boundary only,
+/// A plain geographic coordinate — rendering-agnostic since Big Phase 12
 /// so future SDK swaps remain local to this file.
 @immutable
 class GeoPoint {
@@ -12,12 +11,6 @@ class GeoPoint {
 
   final double latitude;
   final double longitude;
-
-  /// Convert to [ll.LatLng] for `flutter_map` consumption.
-  ll.LatLng toLatLng() => ll.LatLng(latitude, longitude);
-
-  /// Construct from a [ll.LatLng] value.
-  factory GeoPoint.fromLatLng(ll.LatLng p) => GeoPoint(p.latitude, p.longitude);
 
   @override
   bool operator ==(Object other) =>

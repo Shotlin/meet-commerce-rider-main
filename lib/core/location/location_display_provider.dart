@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 import '../maps/geo_point.dart';
+import '../maps/rider_maps_service.dart';
 import 'rider_location_provider.dart';
 
 /// Holds the human-readable area name and raw coordinates for the
@@ -16,9 +15,9 @@ class LocationDisplay {
 
   final GeoPoint position;
 
-  /// Reverse-geocoded area name from OSM Nominatim, e.g.
-  /// "Bow Bazar, Kolkata, West Bengal".
-  /// Null while the lookup is in progress or if it failed.
+  /// Reverse-geocoded area name from Ola Maps via the backend proxy,
+  /// e.g. "Salt Lake, Kolkata". Null while the lookup is in progress
+  /// or if it failed (callers show coordinates instead).
   final String? areaName;
 
   @override
@@ -32,26 +31,19 @@ class LocationDisplay {
 }
 
 /// Watches [riderLocationNotifierProvider] and reverse-geocodes the
-/// position via OSM Nominatim (free, no API key).
+/// position through the backend's Ola Maps proxy (`/maps/ola/
+/// reverse-geocode`) — the API key stays server-side and the last
+/// runtime OpenStreetMap dependency is gone (Big Phase 12).
 ///
-/// Debounces lookups to at most once every 30 seconds so we don't
-/// hammer the public endpoint on every GPS tick.
-///
-/// INTERIM ONLY: reverse geocoding must move to Ola Maps (through the
-/// backend's `/maps/ola/*` proxy) in Big Phase 12/13, which removes the last
-/// runtime OpenStreetMap dependency from the app.
+/// Debounces lookups to at most once every 30 seconds so a moving
+/// rider doesn't spam the proxied, quota-limited API on every GPS tick.
 class LocationDisplayNotifier extends AsyncNotifier<LocationDisplay?> {
   static const Duration _debounce = Duration(seconds: 30);
-  static const String _userAgent = 'meetcommerce-rider-app/0.1.0';
 
   DateTime? _lastLookupAt;
-  http.Client? _client;
 
   @override
   Future<LocationDisplay?> build() async {
-    _client = http.Client();
-    ref.onDispose(() => _client?.close());
-
     // Watch the rider location notifier.
     final ValueNotifier<GeoPoint?> notifier = ref.watch(
       riderLocationNotifierProvider,
@@ -103,49 +95,7 @@ class LocationDisplayNotifier extends AsyncNotifier<LocationDisplay?> {
   }
 
   Future<String?> _reverseGeocode(GeoPoint pos) async {
-    try {
-      final Uri url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse'
-        '?format=json'
-        '&lat=${pos.latitude}'
-        '&lon=${pos.longitude}'
-        '&zoom=14'
-        '&addressdetails=1',
-      );
-      final http.Response resp = await (_client ?? http.Client())
-          .get(url, headers: <String, String>{'User-Agent': _userAgent})
-          .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return null;
-      final dynamic json = jsonDecode(resp.body);
-      if (json is! Map<String, dynamic>) return null;
-      final Map<String, dynamic>? address =
-          json['address'] as Map<String, dynamic>?;
-      if (address == null) return null;
-
-      // Build a short, readable area string.
-      final String suburb =
-          (address['suburb'] as String?) ??
-          (address['neighbourhood'] as String?) ??
-          (address['quarter'] as String?) ??
-          '';
-      final String city =
-          (address['city'] as String?) ??
-          (address['town'] as String?) ??
-          (address['village'] as String?) ??
-          '';
-      final String state = (address['state'] as String?) ?? '';
-
-      final List<String> parts = <String>[
-        if (suburb.isNotEmpty) suburb,
-        if (city.isNotEmpty) city,
-        if (state.isNotEmpty) state,
-      ];
-      return parts.isEmpty
-          ? (json['display_name'] as String?)
-          : parts.join(', ');
-    } catch (_) {
-      return null;
-    }
+    return ref.read(riderMapsServiceProvider).getAreaLabel(pos);
   }
 }
 

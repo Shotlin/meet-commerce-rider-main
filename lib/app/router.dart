@@ -142,10 +142,7 @@ GoRouter buildAppRouter(WidgetRef ref) {
   // changes so the redirect rule re-evaluates. (Pickup-scan state does
   // not change the redirect target any more — the scanner is a pushed
   // screen exempt from this gate.)
-  final Listenable refresh = Listenable.merge(<Listenable>[
-    session,
-    active,
-  ]);
+  final Listenable refresh = Listenable.merge(<Listenable>[session, active]);
   return GoRouter(
     initialLocation: AppRoutes.splash,
     refreshListenable: refresh,

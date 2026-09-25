@@ -42,6 +42,8 @@ class DeliveryOrder {
     this.quickDeliverySelected = false,
     this.scheduledSlotStart,
     this.createdAt,
+    this.deliveryNotes,
+    this.deliveryInstructions,
   });
 
   /// Lenient parser.
@@ -135,6 +137,16 @@ class DeliveryOrder {
         'deliveryMode',
         'delivery_mode',
       ),
+      deliveryNotes: OrderParser.readStringOpt(
+        j,
+        'deliveryNotes',
+        'delivery_notes',
+      ),
+      deliveryInstructions: OrderParser.readStringOpt(
+        j,
+        'deliveryInstructions',
+        'delivery_instructions',
+      ),
       quickDeliverySelected: OrderParser.readBool(
         j,
         'quickDeliverySelected',
@@ -200,6 +212,8 @@ class DeliveryOrder {
     bool? quickDeliverySelected,
     DateTime? scheduledSlotStart,
     DateTime? createdAt,
+    String? deliveryNotes,
+    String? deliveryInstructions,
   }) {
     return DeliveryOrder(
       orderId: orderId ?? this.orderId,
@@ -220,6 +234,8 @@ class DeliveryOrder {
           quickDeliverySelected ?? this.quickDeliverySelected,
       scheduledSlotStart: scheduledSlotStart ?? this.scheduledSlotStart,
       createdAt: createdAt ?? this.createdAt,
+      deliveryNotes: deliveryNotes ?? this.deliveryNotes,
+      deliveryInstructions: deliveryInstructions ?? this.deliveryInstructions,
     );
   }
 
@@ -274,6 +290,14 @@ class DeliveryOrder {
   /// Start of the customer's promised delivery window, for `SCHEDULED`
   /// orders. Null for `ASAP` orders, which have no fixed window.
   final DateTime? scheduledSlotStart;
+
+  /// Rider-facing delivery notes from the customer (e.g. "leave at
+  /// the door, ring the bell twice"). Null when the order carries none.
+  final String? deliveryNotes;
+
+  /// Free-text delivery instructions from the checkout flow. Null when
+  /// the order carries none.
+  final String? deliveryInstructions;
 
   /// When the order was placed — the fallback sequencing key for `ASAP`
   /// orders (whichever has been waiting longest goes first).
@@ -342,6 +366,8 @@ class DeliveryOrder {
     if (other.quickDeliverySelected != quickDeliverySelected) return false;
     if (other.scheduledSlotStart != scheduledSlotStart) return false;
     if (other.createdAt != createdAt) return false;
+    if (other.deliveryNotes != deliveryNotes) return false;
+    if (other.deliveryInstructions != deliveryInstructions) return false;
     if (other.items.length != items.length) return false;
     for (int i = 0; i < items.length; i++) {
       if (other.items[i] != items[i]) return false;

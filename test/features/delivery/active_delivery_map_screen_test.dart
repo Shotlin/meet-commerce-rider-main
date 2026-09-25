@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meet_commerce_rider_main/core/location/rider_location_provider.dart';
 import 'package:meet_commerce_rider_main/core/maps/geo_point.dart';
-import 'package:meet_commerce_rider_main/core/maps/marker_assets.dart';
+import 'package:meet_commerce_rider_main/core/maps/rider_map.dart';
+import 'package:meet_commerce_rider_main/core/maps/rider_maps_service.dart';
 import 'package:meet_commerce_rider_main/core/providers.dart';
 import 'package:meet_commerce_rider_main/core/utils/external_nav_launcher.dart';
 import 'package:meet_commerce_rider_main/features/delivery/application/active_delivery_controller.dart';
@@ -22,6 +22,8 @@ import 'package:mocktail/mocktail.dart';
 import '../../helpers/recording_url_launcher.dart';
 
 class _MockDeliveryRepository extends Mock implements DeliveryRepository {}
+
+class _MockRiderMapsService extends Mock implements RiderMapsService {}
 
 class _Coords {
   const _Coords(this.lat, this.lng);
@@ -75,11 +77,20 @@ _pumpScreen(WidgetTester tester, {required DeliveryOrder initial}) async {
   when(() => repo.getStoreInfo()).thenAnswer(
     (_) async => StoreInfo(name: 'FreshCuts', address: 'Hub', lat: 0, lng: 0),
   );
-  final MarkerAssets markerAssets = MarkerAssets();
-  // ignore: invalid_use_of_visible_for_testing_member
-  markerAssets.warmForTesting();
+  final _MockRiderMapsService mapsService = _MockRiderMapsService();
+  when(() => mapsService.getRoute(any(), any())).thenAnswer((
+    Invocation invocation,
+  ) async {
+    final GeoPoint origin = invocation.positionalArguments[0] as GeoPoint;
+    final GeoPoint destination = invocation.positionalArguments[1] as GeoPoint;
+    return RiderRoute(
+      points: <GeoPoint>[origin, destination],
+      distanceMeters: 1000,
+      durationSeconds: 200,
+    );
+  });
   final ActiveDeliveryMapController map = ActiveDeliveryMapController(
-    markerAssets: markerAssets,
+    mapsService: mapsService,
   );
 
   await tester.pumpWidget(
@@ -87,7 +98,6 @@ _pumpScreen(WidgetTester tester, {required DeliveryOrder initial}) async {
       overrides: <Override>[
         activeDeliveryControllerProvider.overrideWith((Ref ref) => active),
         activeDeliveryMapControllerProvider.overrideWith((Ref ref) => map),
-        markerAssetsProvider.overrideWithValue(markerAssets),
         riderLocationNotifierProvider.overrideWith((Ref ref) => riderLocation),
         deliveryRepositoryProvider.overrideWithValue(repo),
         externalNavLauncherProvider.overrideWithValue(
@@ -107,8 +117,41 @@ _pumpScreen(WidgetTester tester, {required DeliveryOrder initial}) async {
 }
 
 void main() {
-  setUp(() {
-    MarkerAssets.resetForTesting();
+  setUpAll(() {
+    registerFallbackValue(const GeoPoint(0, 0));
+  });
+
+  group('isRiderArrivedAtStore (§11 arrival state)', () {
+    final DeliveryOrder order = _orderFor(
+      status: AssignmentStatus.accepted,
+      store: const _Coords(12.9719, 77.6412),
+      customer: const _Coords(12.93, 77.62),
+    );
+
+    test('a fix within the arrival radius reads as arrived', () {
+      // ~40 m from the store.
+      expect(
+        isRiderArrivedAtStore(
+          riderPosition: const GeoPoint(12.9716, 77.6417),
+          order: order,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a fix far from the store does not', () {
+      expect(
+        isRiderArrivedAtStore(
+          riderPosition: const GeoPoint(12.9352, 77.6245),
+          order: order,
+        ),
+        isFalse,
+      );
+    });
+
+    test('without a GPS fix nothing is fabricated', () {
+      expect(isRiderArrivedAtStore(riderPosition: null, order: order), isFalse);
+    });
   });
 
   testWidgets(
@@ -123,8 +166,8 @@ void main() {
       await _pumpScreen(tester, initial: accepted);
 
       expect(find.byType(ActiveDeliveryMapScreen), findsOneWidget);
-      expect(find.byType(fm.FlutterMap), findsOneWidget);
-      expect(find.text('Mark as picked up'), findsOneWidget);
+      expect(find.byType(ActiveDeliveryMapScreen), findsOneWidget);
+      expect(find.text('Scan pickup code'), findsOneWidget);
     },
     // Network access for tile loads is unsafe under flutter_test;
     // covered by integration_test.
@@ -146,9 +189,9 @@ void main() {
 
       final result = await _pumpScreen(tester, initial: accepted);
 
-      fm.Polyline routePolyline() => result.map.polylines.first;
+      RiderRouteSpec? routePolyline() => result.map.route;
 
-      expect(routePolyline().points.last.latitude, 12.97);
+      expect(routePolyline()!.points.last.latitude, 12.97);
 
       result.active.applyExternalStatus(
         accepted.orderId,
@@ -157,7 +200,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
 
-      expect(routePolyline().points.last.latitude, 12.93);
+      expect(routePolyline()!.points.last.latitude, 12.93);
     },
     skip: true,
   );

@@ -24,10 +24,7 @@ dependencies:
   socket_io_client: ^3.1.4
 
   # Maps, location, external nav
-  flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  flutter_map_tile_caching: ^9.1.4
-  http: ^1.2.2
   geolocator: ^14.0.1
   url_launcher: ^6.3.2
 
@@ -65,6 +62,7 @@ dependencies:
   package_info_plus: ^10.1.0
   intl: ^0.20.2
   shimmer: ^3.0.0
+  maplibre_gl: ^0.27.0
 
 dev_dependencies:
   flutter_test:

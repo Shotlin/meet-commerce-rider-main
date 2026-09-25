@@ -18,14 +18,16 @@
 // **Validates: Requirements 1.1, 2.1**
 
 import 'package:glados/glados.dart';
-
 import 'package:meet_commerce_rider_main/core/maps/geo_point.dart';
-import 'package:meet_commerce_rider_main/core/maps/marker_assets.dart';
+import 'package:meet_commerce_rider_main/core/maps/rider_maps_service.dart';
 import 'package:meet_commerce_rider_main/features/delivery/application/active_delivery_map_controller.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/assignment_status.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/delivery_address.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/delivery_item.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/delivery_order.dart';
+import 'package:mocktail/mocktail.dart' as mocktail;
+
+class _MockRiderMapsService extends mocktail.Mock implements RiderMapsService {}
 
 DeliveryOrder _orderWithNullCustomerCoords({
   required AssignmentStatus status,
@@ -57,10 +59,21 @@ DeliveryOrder _orderWithNullCustomerCoords({
 }
 
 ActiveDeliveryMapController _newController() {
-  final MarkerAssets assets = MarkerAssets();
-  // ignore: invalid_use_of_visible_for_testing_member
-  assets.warmForTesting();
-  return ActiveDeliveryMapController(markerAssets: assets);
+  mocktail.registerFallbackValue(const GeoPoint(0, 0));
+  final _MockRiderMapsService mapsService = _MockRiderMapsService();
+  mocktail
+      .when(() => mapsService.getRoute(mocktail.any(), mocktail.any()))
+      .thenAnswer((Invocation invocation) async {
+        final GeoPoint origin = invocation.positionalArguments[0] as GeoPoint;
+        final GeoPoint destination =
+            invocation.positionalArguments[1] as GeoPoint;
+        return RiderRoute(
+          points: <GeoPoint>[origin, destination],
+          distanceMeters: 1000,
+          durationSeconds: 200,
+        );
+      });
+  return ActiveDeliveryMapController(mapsService: mapsService);
 }
 
 void main() {
@@ -69,7 +82,6 @@ void main() {
       any.choose<AssignmentStatus>(AssignmentStatus.values),
     ).test('Bug Condition: Customer marker should NOT be displayed when '
         'customer coordinates are missing', (AssignmentStatus status) {
-      MarkerAssets.resetForTesting();
       final ActiveDeliveryMapController controller = _newController();
 
       const GeoPoint riderPos = GeoPoint(12.9716, 77.5946);
@@ -92,7 +104,7 @@ void main() {
       );
 
       expect(
-        controller.markers.containsKey('customer'),
+        controller.markers.any((m) => m.id == 'customer'),
         isFalse,
         reason:
             'markers should NOT contain a customer entry when '
@@ -109,10 +121,10 @@ void main() {
 
       if (status == AssignmentStatus.inTransit) {
         expect(
-          controller.polylines,
-          isEmpty,
+          controller.route,
+          isNull,
           reason:
-              'polylines should be empty when customer coordinates are '
+              'route should be absent when customer coordinates are '
               'missing in IN_TRANSIT phase',
         );
         expect(
@@ -129,7 +141,6 @@ void main() {
       'Bug Condition: Customer marker should NOT follow rider movement '
       'when customer coordinates are missing',
       (int _) {
-        MarkerAssets.resetForTesting();
         final ActiveDeliveryMapController controller = _newController();
 
         const GeoPoint initialRiderPos = GeoPoint(12.9716, 77.5946);
@@ -156,7 +167,7 @@ void main() {
         );
 
         expect(
-          controller.markers.containsKey('customer'),
+          controller.markers.any((m) => m.id == 'customer'),
           isFalse,
           reason:
               'markers should still NOT contain a customer entry '
@@ -169,7 +180,6 @@ void main() {
       'Bug Condition: Concrete example from design - IN_TRANSIT with null '
       'customer coordinates',
       (int _) {
-        MarkerAssets.resetForTesting();
         final ActiveDeliveryMapController controller = _newController();
 
         const GeoPoint riderPos = GeoPoint(12.9716, 77.5946);
@@ -184,9 +194,9 @@ void main() {
         controller.applyOrder(order, null);
 
         expect(controller.customerPosition, isNull);
-        expect(controller.markers.containsKey('customer'), isFalse);
+        expect(controller.markers.any((m) => m.id == 'customer'), isFalse);
         expect(controller.customerLocationApproximate, isTrue);
-        expect(controller.polylines, isEmpty);
+        expect(controller.route, isNull);
         expect(controller.phase, LocationPhase.none);
       },
     );

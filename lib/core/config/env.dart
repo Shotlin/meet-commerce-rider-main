@@ -25,7 +25,6 @@ class Env {
     required this.socketBaseUrl,
     required this.flavor,
     required this.enableDevAffordances,
-    this.tileUrlTemplate = _defaultTileUrlTemplate,
   });
 
   /// Builds the canonical [Env] for [flavor].
@@ -45,22 +44,8 @@ class Env {
           : _socketBaseUrlOverride,
       flavor: flavor,
       enableDevAffordances: flavor.isDev,
-      tileUrlTemplate: _defaultTileUrlTemplate,
     );
   }
-
-  /// Raster tile URL template used by the interim Flutter map renderer.
-  ///
-  /// INTERIM ONLY — the production map/navigation stack for this app is Ola
-  /// Maps (see Big Phase 12 of the rebuild plan). This provider and the
-  /// `flutter_map` dependency that consumes it are removed once the Ola
-  /// implementation is proven on both platforms. Nothing here may be treated
-  /// as the production map provider.
-  final String tileUrlTemplate;
-
-  /// Interim raster tile endpoint (see [tileUrlTemplate]).
-  static const String _defaultTileUrlTemplate =
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   /// REST API root, e.g. `https://api.fc.opslin.com/api/v1`.
   ///
@@ -118,18 +103,12 @@ class Env {
         other.apiBaseUrl == apiBaseUrl &&
         other.socketBaseUrl == socketBaseUrl &&
         other.flavor == flavor &&
-        other.enableDevAffordances == enableDevAffordances &&
-        other.tileUrlTemplate == tileUrlTemplate;
+        other.enableDevAffordances == enableDevAffordances;
   }
 
   @override
-  int get hashCode => Object.hash(
-    apiBaseUrl,
-    socketBaseUrl,
-    flavor,
-    enableDevAffordances,
-    tileUrlTemplate,
-  );
+  int get hashCode =>
+      Object.hash(apiBaseUrl, socketBaseUrl, flavor, enableDevAffordances);
 
   @override
   String toString() {
