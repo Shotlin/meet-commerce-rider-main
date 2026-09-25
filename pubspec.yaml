@@ -1,0 +1,116 @@
+name: meet_commerce_rider_main
+description: "Freashcut Rider — delivery-partner app for the Meet Commerce / FreshCuts platform."
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management (Riverpod 3, manual provider declarations).
+  flutter_riverpod: ^3.2.1
+
+  # Routing
+  go_router: ^17.2.3
+
+  # Networking and realtime
+  dio: ^5.9.2
+  socket_io_client: ^3.1.4
+
+  # Maps, location, external nav
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  flutter_map_tile_caching: ^9.1.4
+  http: ^1.2.2
+  geolocator: ^14.0.1
+  url_launcher: ^6.3.2
+
+  # Storage / device / connectivity
+  flutter_secure_storage: ^10.2.0
+  shared_preferences: ^2.3.3
+  connectivity_plus: ^7.1.1
+  permission_handler: ^12.0.1
+  device_info_plus: ^13.1.0
+
+  # Background work (periodic location heartbeat when app is backgrounded)
+  workmanager: ^0.9.0
+
+  # Imaging
+  image_picker: ^1.2.2
+  cached_network_image: ^3.4.1
+  flutter_image_compress: ^2.4.0
+
+  # QR pickup scanning
+  mobile_scanner: ^7.1.2
+
+  # QR display (UPI collection payment QR)
+  qr_flutter: ^4.1.0
+
+  # File system utilities
+  path_provider: ^2.1.5
+  path: ^1.9.1
+
+  # Push / notifications
+  firebase_core: ^4.9.0
+  firebase_messaging: ^16.2.2
+  flutter_local_notifications: ^21.0.0
+
+  # Formatting / UI helpers
+  package_info_plus: ^10.1.0
+  intl: ^0.20.2
+  shimmer: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # Property-based testing and mocking
+  glados: ^1.1.7
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+
+  # Approved FreshCuts brand mark (identical asset to the customer app).
+  assets:
+    - assets/branding/
+
+  # FreshCuts brand typefaces — the same families the Meet Commerce customer
+  # app uses (copied from `meet-commerce-mobile-main/assets/fonts`), so the
+  # rider app reads as the same product family.
+  fonts:
+    # Headings, screen titles, buttons, amounts.
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
+
+    # Body copy, labels, helper/meta text.
+    - family: DMSans
+      fonts:
+        - asset: assets/fonts/DMSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/DMSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/DMSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/DMSans-Bold.ttf
+          weight: 700

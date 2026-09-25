@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Freashcut Rider — Dev (debug)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "debug",
+      "args": [
+        "--flavor", "dev",
+        "--dart-define=FLAVOR=dev"
+      ]
+    },
+    {
+      "name": "Freashcut Rider — Dev (release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "args": [
+        "--flavor", "dev",
+        "--dart-define=FLAVOR=dev"
+      ]
+    },
+    {
+      "name": "Freashcut Rider — Staging (debug)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "debug",
+      "args": [
+        "--flavor", "staging",
+        "--dart-define=FLAVOR=staging"
+      ]
+    },
+    {
+      "name": "Freashcut Rider — Prod (release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "args": [
+        "--flavor", "prod",
+        "--dart-define=FLAVOR=prod"
+      ]
+    }
+  ]
+}

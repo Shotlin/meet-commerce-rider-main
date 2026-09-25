@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network security configuration for the Freashcut Rider app.
+
+    The app talks exclusively to the Meet Commerce HTTPS backend (see
+    lib/core/config/env.dart) over TLS. Cleartext traffic is disallowed for
+    every domain in every flavor.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
