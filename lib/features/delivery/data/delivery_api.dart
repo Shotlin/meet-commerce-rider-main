@@ -254,6 +254,43 @@ class DeliveryApi {
   // Orders
   // ---------------------------------------------------------------------------
 
+  /// Records the COD cash/UPI collection for [orderId] server-side
+  /// (Big Phase 14). The backend validates the split against the order
+  /// total (₹2 tolerance), enforces one collection per order, and the
+  /// deterministic [idempotencyKey] (`collection-{orderId}`) makes the
+  /// retry a replay instead of a duplicate posting.
+  ///
+  /// Throws the raw [ApiException] on failure — the collect sheet maps
+  /// `COLLECTION_AMOUNT_MISMATCH` back onto the rider's own screen.
+  Future<void> postCollection(
+    String orderId, {
+    required double cashAmount,
+    required double upiAmount,
+    required String idempotencyKey,
+  }) async {
+    await _client.post<Object?>(
+      '/delivery/orders/$orderId/collection',
+      body: <String, dynamic>{
+        'cashAmount': cashAmount,
+        'upiAmount': upiAmount,
+        'idempotencyKey': idempotencyKey,
+      },
+      parseData: (Object? raw) => raw,
+    );
+  }
+
+  /// The rider cash ledger roll-up (Big Phase 14).
+  Future<Map<String, dynamic>> getCollectionsSummary() async {
+    final ApiEnvelope<Map<String, dynamic>> envelope = await _client
+        .get<Map<String, dynamic>>(
+          '/delivery/collections/summary',
+          parseData: (Object? raw) => raw is Map
+              ? raw.map((k, v) => MapEntry('$k', v))
+              : <String, dynamic>{},
+        );
+    return envelope.data ?? const <String, dynamic>{};
+  }
+
   /// Fetches the rider's current orders.
   ///
   /// The live backend returns a **bare array** under `data` (not
@@ -401,14 +438,10 @@ class DeliveryApi {
     String orderId, {
     String? proofPhotoUrl,
     bool? demoMode,
-    double? cashCollected,
-    double? upiCollected,
   }) async {
     final Map<String, dynamic> body = <String, dynamic>{};
     if (proofPhotoUrl != null) body['proofPhotoUrl'] = proofPhotoUrl;
     if (demoMode != null) body['demoMode'] = demoMode;
-    if (cashCollected != null) body['cashCollected'] = cashCollected;
-    if (upiCollected != null) body['upiCollected'] = upiCollected;
 
     await _client.patch<Object?>(
       '/delivery/orders/$orderId/deliver',

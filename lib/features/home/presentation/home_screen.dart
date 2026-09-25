@@ -30,6 +30,7 @@ import '../../delivery/domain/delivery_order.dart';
 import '../../delivery/domain/pickup_session.dart';
 import '../../delivery/domain/rider_earnings.dart';
 import '../../delivery/domain/rider_profile.dart';
+import '../../delivery/domain/collections_summary.dart';
 import '../../delivery/domain/rider_stats.dart';
 import '../../delivery/domain/store_info.dart';
 import '../../delivery/presentation/delivery_offer_sheet.dart';
@@ -346,6 +347,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _MetricsGrid(
                 stats: dashboard.stats,
                 earningsToday: dashboard.earningsToday,
+                collections: dashboard.collections,
                 profile: profile,
                 statsLoading: dashboard.statsLoading,
                 statsError: dashboard.statsError,
@@ -957,6 +959,7 @@ class _MetricsGrid extends StatelessWidget {
   const _MetricsGrid({
     required this.stats,
     required this.earningsToday,
+    required this.collections,
     required this.profile,
     required this.statsLoading,
     required this.statsError,
@@ -967,6 +970,7 @@ class _MetricsGrid extends StatelessWidget {
 
   final RiderStats? stats;
   final RiderEarnings? earningsToday;
+  final CollectionsSummary? collections;
   final RiderProfile? profile;
   final bool statsLoading;
   final String? statsError;
@@ -1009,7 +1013,7 @@ class _MetricsGrid extends StatelessWidget {
     final double earningsValue = earningsToday?.totalEarnings ?? 0;
     final int delivered = stats?.deliveredToday ?? 0;
     final double rating = (profile?.rating ?? stats?.rating ?? 0).toDouble();
-    final double pendingPayout = earningsToday?.pendingPayout ?? 0;
+    final double cashInHand = collections?.cashInHand ?? 0;
     final bool commissionEnabled = profile?.commissionEnabled ?? true;
 
     return Column(
@@ -1056,8 +1060,10 @@ class _MetricsGrid extends StatelessWidget {
             const SizedBox(width: AppDimensions.md),
             Expanded(
               child: _StatTile(
-                label: 'Pending payout',
-                value: _HomeScreenState.formatRupees(pendingPayout),
+                // Big Phase 14: the real cash ledger replaced the
+                // interim pending-payout figure (Phase 9 deferral).
+                label: 'Cash in hand',
+                value: _HomeScreenState.formatRupees(cashInHand),
                 icon: Icons.account_balance_wallet_outlined,
                 iconColor: AppColors.info,
               ),

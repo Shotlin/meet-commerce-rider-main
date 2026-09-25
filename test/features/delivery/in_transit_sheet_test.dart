@@ -74,9 +74,7 @@ Future<void> _pumpSheet(
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: InTransitSheet(order: order),
-          ),
+          body: SingleChildScrollView(child: InTransitSheet(order: order)),
         ),
       ),
     ),
@@ -99,22 +97,22 @@ void main() {
   testWidgets('shows the exact COD amount due while uncollected, and '
       'hides it once the split is recorded', (WidgetTester tester) async {
     final ActiveDeliveryController controller = ActiveDeliveryController()
-      ..setActiveDelivery(_order())
-      ..recordCollectedPayment(
-        'order-1',
-        const CollectedPayment(cashCollected: 380, upiCollected: 0),
-      );
-    await _pumpSheet(
-      tester,
-      order: _order(),
-      controller: controller,
-    );
+      ..setActiveDelivery(_order());
+    await _pumpSheet(tester, order: _order(), controller: controller);
 
     expect(
       find.text('Collect ₹380 on delivery'),
       findsOneWidget,
       reason: 'the §13 COD amount-due chip shows the exact customer amount',
     );
+
+    controller.recordCollectedPayment(
+      'order-1',
+      const CollectedPayment(cashCollected: 380, upiCollected: 0),
+    );
+    await tester.pump();
+
+    expect(find.text('Collect ₹380 on delivery'), findsNothing);
     expect(find.text('Payment collected · Edit'), findsOneWidget);
   });
 
@@ -126,10 +124,7 @@ void main() {
       order: _order(notes: 'Leave at the door', instructions: 'Ring twice'),
     );
 
-    expect(
-      find.text('Leave at the door · Ring twice'),
-      findsOneWidget,
-    );
+    expect(find.text('Leave at the door · Ring twice'), findsOneWidget);
   });
 
   testWidgets('shows no notes strip when the order carries none', (
@@ -166,19 +161,18 @@ void main() {
   testWidgets('opens the delivery details sheet with items and notes', (
     WidgetTester tester,
   ) async {
-    await _pumpSheet(
-      tester,
-      order: _order(notes: 'Leave at the door'),
-    );
+    await _pumpSheet(tester, order: _order(notes: 'Leave at the door'));
 
     await tester.tap(find.text('Delivery details'));
     await tester.pumpAndSettle();
 
     expect(find.text('Order #ORD-1001'), findsOneWidget);
-    expect(find.text('Pickup'), findsOneWidget);
-    expect(find.text('Drop'), findsOneWidget);
+    // 'Drop' legitimately appears on both the underlying delivery card
+    // and the details sheet opened on top of it.
+    expect(find.text('Drop'), findsNWidgets(2));
     expect(find.text('Delivery notes'), findsOneWidget);
-    expect(find.text('Leave at the door'), findsOneWidget);
+    // The note shows on the card strip AND inside the details sheet.
+    expect(find.text('Leave at the door'), findsNWidgets(2));
     expect(find.text('1 ×'), findsOneWidget);
     expect(find.text('Rice 5kg'), findsOneWidget);
     expect(find.text('2 ×'), findsOneWidget);

@@ -155,7 +155,10 @@ class _ActiveDeliveryMapScreenState
     // Requirement §23: tracking frequency follows the delivery phase.
     // Fire-and-forget — the sync is idempotent and the manager
     // early-returns on unchanged profiles.
-    await _locationPhaseSync.apply(map.phase, ref.read<LocationLifecycleManager>(locationLifecycleManagerProvider));
+    await _locationPhaseSync.apply(
+      map.phase,
+      ref.read<LocationLifecycleManager>(locationLifecycleManagerProvider),
+    );
   }
 
   @override

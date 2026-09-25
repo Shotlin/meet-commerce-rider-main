@@ -5,6 +5,7 @@ import '../../delivery/data/delivery_api.dart';
 import '../../delivery/domain/delivery_order.dart';
 import '../../delivery/domain/rider_earnings.dart';
 import '../../delivery/domain/rider_profile.dart';
+import '../../delivery/domain/collections_summary.dart';
 import '../../delivery/domain/rider_stats.dart';
 import '../../delivery/domain/store_info.dart';
 
@@ -42,6 +43,20 @@ class HomeDashboardController extends ChangeNotifier {
   RiderEarnings? _earningsToday;
   List<DeliveryOrder> _orders = const <DeliveryOrder>[];
   StoreInfo? _store;
+  CollectionsSummary? _collections;
+
+  /// Latest cash-ledger summary from `/delivery/collections/summary`
+  /// (Big Phase 14). Null until first successful fetch.
+  CollectionsSummary? get collections => _collections;
+
+  String? _collectionsError;
+  bool _collectionsLoading = false;
+
+  /// Error from the latest collections-summary fetch.
+  String? get collectionsError => _collectionsError;
+
+  /// Whether the collections-summary call is in flight.
+  bool get collectionsLoading => _collectionsLoading;
 
   /// Latest profile from `/delivery/profile`. Null until first
   /// successful fetch.
@@ -137,11 +152,13 @@ class HomeDashboardController extends ChangeNotifier {
     _earningsLoading = true;
     _ordersLoading = true;
     _storeLoading = true;
+    _collectionsLoading = true;
     _profileError = null;
     _statsError = null;
     _earningsError = null;
     _ordersError = null;
     _storeError = null;
+    _collectionsError = null;
     notifyListeners();
 
     await Future.wait<void>(<Future<void>>[
@@ -150,6 +167,7 @@ class HomeDashboardController extends ChangeNotifier {
       _refreshEarningsToday(),
       _refreshOrders(),
       _refreshStore(),
+      _refreshCollections(),
     ]);
 
     notifyListeners();
@@ -276,6 +294,26 @@ class HomeDashboardController extends ChangeNotifier {
       _storeError = e.toString();
     } finally {
       _storeLoading = false;
+    }
+  }
+
+  Future<void> _refreshCollections() async {
+    _collectionsLoading = true;
+    _collectionsError = null;
+    try {
+      _collections = CollectionsSummary.fromJson(
+        await _api.getCollectionsSummary(),
+      );
+    } catch (e, stack) {
+      AppLogger.warn(
+        LogTopic.state,
+        'HomeDashboardController.collections failed: $e',
+        error: e,
+        stackTrace: stack,
+      );
+      _collectionsError = e.toString();
+    } finally {
+      _collectionsLoading = false;
     }
   }
 }

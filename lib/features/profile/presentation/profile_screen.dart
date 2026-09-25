@@ -7,6 +7,7 @@ import '../../../core/providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/status_chip.dart';
 import '../../../shared/widgets/error_state.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
 import '../../auth/application/session_controller.dart';
@@ -80,6 +81,15 @@ class _ProfileContent extends ConsumerWidget {
 
   final RiderProfile profile;
 
+  /// Masks a bank account number to its last 4 digits
+  /// (design §20: "sensitive bank/account values must be masked").
+  String _maskAccount(String accountNumber) {
+    final String digits = accountNumber.replaceAll(RegExp(r'\s'), '');
+    if (digits.length <= 4)
+      return '•••• ${digits.replaceAll(RegExp(r"."), "•")}';
+    return '•••• ${digits.substring(digits.length - 4)}';
+  }
+
   /// Returns the rider's phone in `+91 XXXXXXXXXX` form. The live
   /// backend stores 10-digit numbers without the country code, so the
   /// `+91` prefix is added back here for display.
@@ -132,6 +142,14 @@ class _ProfileContent extends ConsumerWidget {
                 Text(
                   _formatPhone(profile.phone),
                   style: AppTypography.body.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: 8),
+                // Design §20 identity card: the KYC state is unmistakable.
+                StatusChip(
+                  label: profile.isApproved ? 'APPROVED' : 'PENDING',
+                  tone: profile.isApproved
+                      ? StatusTone.success
+                      : StatusTone.pending,
                 ),
               ],
             ),
@@ -192,7 +210,46 @@ class _ProfileContent extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
+          // Bank & Payout (design §20: sensitive values masked)
+          if (profile.bankAccountNumber != null &&
+              profile.bankAccountNumber!.isNotEmpty) ...<Widget>[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'BANK & PAYOUT',
+                    style: AppTypography.micro.copyWith(color: AppColors.muted),
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoRow(
+                    label: 'Account',
+                    value: _maskAccount(profile.bankAccountNumber!),
+                  ),
+                  const Divider(height: 24, color: AppColors.border),
+                  _InfoRow(label: 'IFSC', value: profile.bankIfsc ?? '—'),
+                  const Divider(height: 24, color: AppColors.border),
+                  _InfoRow(label: 'Bank', value: profile.bankName ?? '—'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // Navigation rows
+          _NavRow(
+            icon: Icons.payments_outlined,
+            label: 'Cash collections',
+            subtitle: 'COD cash you have collected and handed over',
+            onTap: () => context.push(AppRoutes.earnings),
+          ),
+          const SizedBox(height: 8),
           _NavRow(
             icon: Icons.description_outlined,
             label: 'Documents',

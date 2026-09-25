@@ -61,8 +61,9 @@ void main() {
         speedAccuracy: 0,
       );
     });
-    when(() => locationService.getPositionStream(any<LocationProfile>()))
-        .thenAnswer((Invocation invocation) {
+    when(
+      () => locationService.getPositionStream(any<LocationProfile>()),
+    ).thenAnswer((Invocation invocation) {
       requestedProfiles.add(
         invocation.positionalArguments.single as LocationProfile,
       );

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:meet_commerce_rider_main/core/network/api_envelope.dart';
+import 'package:meet_commerce_rider_main/core/network/api_exception.dart';
 import 'package:meet_commerce_rider_main/features/delivery/data/delivery_api.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/delivery_history_entry.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/delivery_order.dart';
@@ -144,6 +145,40 @@ class FakeDeliveryApi implements DeliveryApi {
 
   /// Number of times [getEarnings] was called.
   int getEarningsCallCount = 0;
+
+  /// (orderId, cash, upi, key) tuples passed to [postCollection].
+  final List<(String, double, double, String)> postCollectionCalls =
+      <(String, double, double, String)>[];
+
+  /// When set, [postCollection] throws this instead of succeeding.
+  ApiException? postCollectionError;
+
+  /// The summary returned by [getCollectionsSummary].
+  Map<String, dynamic> collectionsSummary = const <String, dynamic>{
+    'collectedToday': 0,
+    'cashCollectedTotal': 0,
+    'upiCollectedTotal': 0,
+    'cashSettled': 0,
+    'cashInHand': 0,
+    'pendingHandover': 0,
+  };
+
+  @override
+  Future<void> postCollection(
+    String orderId, {
+    required double cashAmount,
+    required double upiAmount,
+    required String idempotencyKey,
+  }) async {
+    postCollectionCalls.add((orderId, cashAmount, upiAmount, idempotencyKey));
+    final ApiException? error = postCollectionError;
+    if (error != null) throw error;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getCollectionsSummary() async {
+    return collectionsSummary;
+  }
 
   // ---------------------------------------------------------------------------
   // Test helper

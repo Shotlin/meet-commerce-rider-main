@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/location/location_permission_service.dart';
+import '../../../core/location/location_permission_status.dart';
+import '../../../core/maps/rider_maps_service.dart';
+import '../../../core/providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 
@@ -28,15 +33,15 @@ enum _LocationPrecision {
 /// Toggle state is persisted to [SharedPreferences] so selections survive
 /// app restarts. Values are written on every change so no explicit
 /// "Save" action is required.
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   /// Const constructor.
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _orderAlertsEnabled = true;
   _LocationPrecision _precision = _LocationPrecision.auto;
@@ -150,6 +155,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _precision == _LocationPrecision.high,
             onChanged: _setPrecision,
           ),
+          const SizedBox(height: 8),
+          _LocationStatusRow(),
+          const SizedBox(height: 24),
+
+          const _SectionHeader(label: 'MAPS'),
+          const SizedBox(height: 8),
+          const _OlaMapsStatusRow(),
           const SizedBox(height: 24),
 
           const _SectionHeader(label: 'SUPPORT'),
@@ -157,11 +169,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _TapRow(
             icon: Icons.help_outline,
             label: 'Help & support',
-            onTap: () {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Help coming soon')));
-            },
+            // Big Phase 16: no support channel (phone/WhatsApp/email) is
+            // configured in this environment yet — the dialog says so
+            // honestly instead of pretending a channel exists.
+            onTap: () => _showSupportDialog(context),
           ),
           const SizedBox(height: 24),
 
@@ -180,6 +191,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  void _showSupportDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(
+          'Help & support',
+          style: AppTypography.heading.copyWith(color: AppColors.charcoal),
+        ),
+        content: Text(
+          'A dedicated support channel is not configured for this '
+          'environment yet. For delivery issues, reach out to your '
+          'FreshCuts store directly.',
+          style: AppTypography.body.copyWith(color: AppColors.charcoal),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live location-permission status (design §21 "location status") —
+/// reads the real permission state via the service's read-only
+/// [LocationPermissionService.check], never a guess.
+class _LocationStatusRow extends ConsumerStatefulWidget {
+  const _LocationStatusRow();
+
+  @override
+  ConsumerState<_LocationStatusRow> createState() => _LocationStatusRowState();
+}
+
+class _LocationStatusRowState extends ConsumerState<_LocationStatusRow> {
+  LocationPermissionResult? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final LocationPermissionResult result = await ref
+        .read<LocationPermissionService>(locationPermissionServiceProvider)
+        .check();
+    if (!mounted) return;
+    setState(() => _result = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final LocationPermissionResult? result = _result;
+
+    final (String label, IconData icon, Color color) = result == null
+        ? ('Checking…', Icons.location_searching, AppColors.muted)
+        : switch (result.permission) {
+            LocationPermissionState.granted => (
+              'Granted — while in use',
+              Icons.check_circle_outline,
+              AppColors.success,
+            ),
+            LocationPermissionState.deniedOnce => (
+              'Not granted yet',
+              Icons.error_outline,
+              AppColors.warning,
+            ),
+            LocationPermissionState.deniedForever => (
+              'Denied — enable in system settings',
+              Icons.block_outlined,
+              AppColors.danger,
+            ),
+            LocationPermissionState.restricted => (
+              'Restricted by the system',
+              Icons.block_outlined,
+              AppColors.danger,
+            ),
+          };
+
+    return _StatusRow(
+      icon: icon,
+      label: 'Location permission',
+      value: label,
+      valueColor: color,
+    );
+  }
+}
+
+/// Live Ola Maps status (design §21 "Ola Maps navigation status") —
+/// reflects whether the backend has the key configured.
+class _OlaMapsStatusRow extends ConsumerWidget {
+  const _OlaMapsStatusRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<OlaMapsAvailability> availability = ref.watch(
+      olaMapsAvailabilityProvider,
+    );
+
+    final (String label, IconData icon, Color color) = availability.maybeWhen(
+      data: (OlaMapsAvailability a) => a.configured
+          ? (
+              'Configured — Ola vector maps',
+              Icons.check_circle_outline,
+              AppColors.success,
+            )
+          : (
+              'Not configured for this environment',
+              Icons.info_outline,
+              AppColors.warning,
+            ),
+      orElse: () => ('Checking…', Icons.map_outlined, AppColors.muted),
+    );
+
+    return _StatusRow(
+      icon: icon,
+      label: 'Ola Maps',
+      value: label,
+      valueColor: color,
+    );
+  }
+}
+
+/// Shared status row shape for the settings status entries.
+class _StatusRow extends StatelessWidget {
+  const _StatusRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(icon, size: 20, color: AppColors.muted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTypography.label.copyWith(color: AppColors.charcoal),
+            ),
+          ),
+          Icon(Icons.circle, size: 8, color: valueColor),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              value,
+              style: AppTypography.micro.copyWith(color: AppColors.muted),
+              textAlign: TextAlign.right,
+            ),
+          ),
         ],
       ),
     );

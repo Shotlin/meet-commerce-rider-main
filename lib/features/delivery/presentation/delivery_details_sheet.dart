@@ -21,8 +21,7 @@ Future<void> showDeliveryDetailsSheet(
     context,
     initialChildSize: 0.72,
     snapSizes: const <double>[0.72],
-    builder: (BuildContext sheetContext) =>
-        _DeliveryDetailsBody(order: order),
+    builder: (BuildContext sheetContext) => _DeliveryDetailsBody(order: order),
   );
 }
 
@@ -152,7 +151,10 @@ class _DetailAddress extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(tag, style: AppTypography.micro.copyWith(color: AppColors.muted)),
+          Text(
+            tag,
+            style: AppTypography.micro.copyWith(color: AppColors.muted),
+          ),
           const SizedBox(height: 4),
           Text(
             title,

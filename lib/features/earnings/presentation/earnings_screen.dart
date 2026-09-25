@@ -15,6 +15,8 @@ import '../../../shared/widgets/error_state.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../delivery/data/delivery_api.dart';
+import '../../../shared/widgets/app_button.dart';
+import '../../delivery/domain/collections_summary.dart';
 import '../../delivery/domain/rider_earnings.dart';
 import '../application/earnings_controller.dart';
 
@@ -214,7 +216,7 @@ class _PeriodChipBar extends StatelessWidget {
 }
 
 /// Main earnings content when data is available.
-class _EarningsContent extends StatelessWidget {
+class _EarningsContent extends ConsumerWidget {
   const _EarningsContent({required this.earnings});
 
   final RiderEarnings earnings;
@@ -226,18 +228,23 @@ class _EarningsContent extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final CollectionsSummary? collectionsSummary = ref
+        .watch(homeDashboardControllerProvider)
+        .collections;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          // Hero total earnings card
+          // Hero total earnings card (design §17: white card, brand-red
+          // amount — not the seed's black hero).
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.black,
+              color: AppColors.white,
               borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +256,7 @@ class _EarningsContent extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   _money.format(earnings.totalEarnings),
-                  style: AppTypography.display.copyWith(color: AppColors.white),
+                  style: AppTypography.display.copyWith(color: AppColors.brand),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -262,7 +269,8 @@ class _EarningsContent extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Breakdown section
+          // Breakdown section (only components the backend returns —
+          // requirement §17: "only show components actually returned").
           Text(
             'BREAKDOWN',
             style: AppTypography.micro.copyWith(color: AppColors.muted),
@@ -303,24 +311,48 @@ class _EarningsContent extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // COD collections snapshot (Big Phase 14 ledger) — the cash
+          // side of the rider's money, next to the commission side.
+          Text(
+            'CASH COLLECTIONS',
+            style: AppTypography.micro.copyWith(color: AppColors.muted),
+          ),
+          const SizedBox(height: 8),
+          _CollectionsStrip(summary: collectionsSummary),
+          const SizedBox(height: 16),
+
           // Payout section
           Text(
             'PAYOUTS',
             style: AppTypography.micro.copyWith(color: AppColors.muted),
           ),
           const SizedBox(height: 8),
-          StatCard(
-            label: 'Pending payout',
-            value: _money.format(earnings.pendingPayout),
-            icon: Icons.pending_outlined,
-            accent: AppColors.warning,
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: StatCard(
+                  label: 'Pending payout',
+                  value: _money.format(earnings.pendingPayout),
+                  icon: Icons.pending_outlined,
+                  accent: AppColors.warning,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: StatCard(
+                  label: 'Last payout',
+                  value: _money.format(earnings.lastPayoutAmount),
+                  icon: Icons.check_circle_outline,
+                  accent: AppColors.success,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          StatCard(
-            label: 'Last payout',
-            value: _money.format(earnings.lastPayoutAmount),
-            icon: Icons.check_circle_outline,
-            accent: AppColors.success,
+          AppButton(
+            label: 'View payout history',
+            variant: AppButtonVariant.secondary,
+            onPressed: () => unawaited(context.push(AppRoutes.payoutHistory)),
           ),
           const SizedBox(height: 24),
         ],
@@ -363,4 +395,102 @@ class _EarningsSkeleton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Compact cash-collections snapshot (Big Phase 14): the cash side of
+/// the rider's money, next to the commission side. Values come from
+/// `/delivery/collections/summary`; zeros when nothing collected yet.
+class _CollectionsStrip extends StatelessWidget {
+  const _CollectionsStrip({required this.summary});
+
+  final CollectionsSummary? summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final CollectionsSummary? s = summary;
+    if (s == null ||
+        (s.collectedToday == 0 &&
+            s.cashInHand == 0 &&
+            s.upiCollectedTotal == 0)) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Text(
+          'No COD collections yet. Cash you collect on delivery appears here.',
+          style: AppTypography.micro.copyWith(color: AppColors.muted),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Collected today',
+                  style: AppTypography.micro.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _CollectionsStripX.money(s.collectedToday),
+                  style: AppTypography.label.copyWith(
+                    color: AppColors.charcoal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Cash in hand',
+                  style: AppTypography.micro.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _CollectionsStripX.money(s.cashInHand),
+                  style: AppTypography.label.copyWith(color: AppColors.warning),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'UPI collected',
+                  style: AppTypography.micro.copyWith(color: AppColors.muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _CollectionsStripX.money(s.upiCollectedTotal),
+                  style: AppTypography.label.copyWith(color: AppColors.success),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+extension _CollectionsStripX on Object {
+  static String money(double value) =>
+      '₹${value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 2)}';
 }

@@ -315,8 +315,10 @@ void main() {
     expect(find.text('6'), findsOneWidget);
     expect(find.text('Rating'), findsOneWidget);
     expect(find.text('4.6'), findsOneWidget);
-    expect(find.text('Pending payout'), findsOneWidget);
-    expect(find.text('₹320'), findsOneWidget);
+    expect(find.text('Cash in hand'), findsOneWidget);
+    // The fake's default summary carries zeros — the tile renders the
+    // real ledger value.
+    expect(find.text('₹0'), findsOneWidget);
   });
 
   testWidgets('a busy online rider gets the soft-red busy hero with '

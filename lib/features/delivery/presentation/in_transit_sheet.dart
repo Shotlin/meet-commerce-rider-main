@@ -199,11 +199,7 @@ class InTransitSheet extends ConsumerWidget {
 
     final DeliveryResult result = await ref
         .read<ActiveDeliveryController>(activeDeliveryControllerProvider)
-        .deliverDirect(
-          order.orderId,
-          cashCollected: collected?.cashCollected,
-          upiCollected: collected?.upiCollected,
-        );
+        .deliverDirect(order.orderId);
     switch (result) {
       case DeliveryResultSuccess():
         return;
@@ -369,7 +365,9 @@ class AddressCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   title,
-                  style: AppTypography.label.copyWith(color: AppColors.charcoal),
+                  style: AppTypography.label.copyWith(
+                    color: AppColors.charcoal,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(

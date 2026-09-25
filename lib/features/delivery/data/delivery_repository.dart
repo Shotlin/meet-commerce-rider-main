@@ -3,6 +3,7 @@ import 'dart:io';
 import '../../../core/network/api_envelope.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/app_logger.dart';
+import '../domain/collections_summary.dart';
 import '../domain/delivery_history_entry.dart';
 import '../domain/delivery_order.dart';
 import '../domain/payout.dart';
@@ -172,19 +173,46 @@ class DeliveryRepository {
     String orderId, {
     String? proofPhotoUrl,
     bool? demoMode,
-    double? cashCollected,
-    double? upiCollected,
   }) async {
     try {
       await _api.markDelivered(
         orderId,
         proofPhotoUrl: proofPhotoUrl,
         demoMode: demoMode,
-        cashCollected: cashCollected,
-        upiCollected: upiCollected,
       );
     } on ApiException catch (e, stack) {
       _logAndTranslate('markDelivered', orderId, e, stack);
+      rethrow;
+    }
+  }
+
+  /// Persists the COD cash/UPI collection server-side (Big Phase 14).
+  Future<void> postCollection(
+    String orderId, {
+    required double cashAmount,
+    required double upiAmount,
+    required String idempotencyKey,
+  }) async {
+    try {
+      await _api.postCollection(
+        orderId,
+        cashAmount: cashAmount,
+        upiAmount: upiAmount,
+        idempotencyKey: idempotencyKey,
+      );
+    } on ApiException catch (e, stack) {
+      _logAndTranslate('postCollection', orderId, e, stack);
+      rethrow;
+    }
+  }
+
+  /// The rider cash ledger roll-up (Big Phase 14).
+  Future<CollectionsSummary> getCollectionsSummary() async {
+    try {
+      final Map<String, dynamic> raw = await _api.getCollectionsSummary();
+      return CollectionsSummary.fromJson(raw);
+    } on ApiException catch (e, stack) {
+      _logAndTranslate('getCollectionsSummary', 'collections', e, stack);
       rethrow;
     }
   }

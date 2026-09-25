@@ -377,18 +377,13 @@ class ActiveDeliveryController extends ChangeNotifier {
   /// Marks the active order as delivered immediately — no OTP or
   /// proof-photo verification. COD collection (if any) has already
   /// happened via [recordCollectedPayment] before this is called.
-  Future<DeliveryResult> deliverDirect(
-    String orderId, {
-    double? cashCollected,
-    double? upiCollected,
-  }) async {
+  Future<DeliveryResult> deliverDirect(String orderId) async {
     return _runAction('deliverDirect', orderId, () async {
       final DeliveryRepository repository = _requireRepository();
-      await repository.markDelivered(
-        orderId,
-        cashCollected: cashCollected,
-        upiCollected: upiCollected,
-      );
+      // Big Phase 14: the collection is persisted server-side before
+      // this call (the collect sheet posts it); the backend hard-blocks
+      // a COD delivery without a confirmed collection.
+      await repository.markDelivered(orderId);
       return _completeDelivery(orderId);
     });
   }
@@ -407,12 +402,7 @@ class ActiveDeliveryController extends ChangeNotifier {
   /// proof sheet can keep the preview and offer a retry (R15.4).
   /// Step-2 errors are surfaced via the standard mapping (stale /
   /// generic).
-  Future<DeliveryResult> deliverWithProof(
-    String orderId,
-    File file, {
-    double? cashCollected,
-    double? upiCollected,
-  }) async {
+  Future<DeliveryResult> deliverWithProof(String orderId, File file) async {
     final DeliveryRepository? repository = _repository;
     if (repository == null) {
       return const DeliveryResultFailure('Network unavailable');
@@ -442,12 +432,7 @@ class ActiveDeliveryController extends ChangeNotifier {
       }
 
       try {
-        await repository.markDelivered(
-          orderId,
-          proofPhotoUrl: url,
-          cashCollected: cashCollected,
-          upiCollected: upiCollected,
-        );
+        await repository.markDelivered(orderId, proofPhotoUrl: url);
         return _completeDelivery(orderId);
       } on OrderNotAvailableException catch (e) {
         AppLogger.info(

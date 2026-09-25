@@ -14,6 +14,7 @@ import '../../../shared/widgets/loading_indicator.dart';
 import '../../../shared/widgets/skeleton_loader.dart';
 import '../../../shared/widgets/status_chip.dart';
 import '../../delivery/domain/delivery_history_entry.dart';
+import 'delivery_history_detail_sheet.dart';
 import '../application/history_controller.dart';
 
 /// Delivery history screen with infinite scroll.
@@ -182,58 +183,70 @@ class _HistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.white,
+    return Material(
+      color: AppColors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  _orderNumber(),
-                  style: AppTypography.label.copyWith(
-                    color: AppColors.charcoal,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  entry.customerArea ?? 'Area unavailable',
-                  style: AppTypography.body.copyWith(color: AppColors.muted),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatDate(entry.completedAt),
-                  style: AppTypography.micro.copyWith(color: AppColors.muted),
-                ),
-              ],
-            ),
+        onTap: () => showDeliveryHistoryDetailSheet(context, entry),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
           ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              if (commissionEnabled) ...<Widget>[
-                Text(
-                  _money.format(entry.earnings),
-                  style: AppTypography.heading.copyWith(
-                    color: AppColors.charcoal,
-                  ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      _orderNumber(),
+                      style: AppTypography.label.copyWith(
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.customerArea ?? 'Area unavailable',
+                      style: AppTypography.body.copyWith(
+                        color: AppColors.muted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDate(entry.completedAt),
+                      style: AppTypography.micro.copyWith(
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-              ],
-              StatusChip(label: entry.status, tone: _toneFor(entry.status)),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  if (commissionEnabled) ...<Widget>[
+                    Text(
+                      _money.format(entry.earnings),
+                      style: AppTypography.heading.copyWith(
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  StatusChip(label: entry.status, tone: _toneFor(entry.status)),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

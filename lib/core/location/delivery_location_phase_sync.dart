@@ -34,7 +34,10 @@ class DeliveryLocationPhaseSync {
 
   /// Applies [phase] to [manager] if it differs from the last applied
   /// phase. Returns `true` when a lifecycle call was made.
-  Future<bool> apply(LocationPhase phase, LocationLifecycleManager manager) async {
+  Future<bool> apply(
+    LocationPhase phase,
+    LocationLifecycleManager manager,
+  ) async {
     if (_lastPhase == phase) return false;
     final LocationPhase? previous = _lastPhase;
     _lastPhase = phase;

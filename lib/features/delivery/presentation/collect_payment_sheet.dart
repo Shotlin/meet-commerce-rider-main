@@ -12,6 +12,10 @@ import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../domain/collected_payment.dart';
+import '../../../core/providers.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/utils/app_logger.dart';
+import '../data/delivery_repository.dart';
 import '../domain/delivery_order.dart';
 
 /// Tolerance (in rupees) the confirm button allows between the recorded
@@ -79,10 +83,61 @@ class _CollectPaymentSheetBodyState
   double get _remaining => widget.order.totalAmount - (_cash + _upi);
   bool get _isBalanced => _remaining.abs() <= _kCollectionTolerance;
 
-  void _onConfirm() {
-    Navigator.of(context).pop<CollectedPayment>(
-      CollectedPayment(cashCollected: _cash, upiCollected: _upi),
-    );
+  bool _posting = false;
+  String? _errorMessage;
+
+  /// Confirms the split: persists it server-side (Big Phase 14) before
+  /// popping. The deterministic `collection-{orderId}` idempotency key
+  /// makes a retry a replay, never a duplicate posting. On mismatch or
+  /// transport failure the rider stays on the sheet with the backend's
+  /// message (requirement §14: "remain on collection screen").
+  Future<void> _onConfirm() async {
+    if (_posting) return;
+    setState(() {
+      _posting = true;
+      _errorMessage = null;
+    });
+
+    final NavigatorState navigator = Navigator.of(context);
+    try {
+      await ref
+          .read<DeliveryRepository>(deliveryRepositoryProvider)
+          .postCollection(
+            widget.order.orderId,
+            cashAmount: _cash,
+            upiAmount: _upi,
+            idempotencyKey: 'collection-${widget.order.orderId}',
+          );
+      if (!navigator.mounted) return;
+      navigator.pop<CollectedPayment>(
+        CollectedPayment(cashCollected: _cash, upiCollected: _upi),
+      );
+    } on ApiException catch (e, stack) {
+      AppLogger.warn(
+        LogTopic.state,
+        'postCollection(${widget.order.orderId}) failed: '
+        '${e.backendCode ?? 'no-code'} ${e.message}',
+        error: e,
+        stackTrace: stack,
+      );
+      if (!mounted) return;
+      setState(() {
+        _posting = false;
+        _errorMessage = e.message;
+      });
+    } catch (e, stack) {
+      AppLogger.warn(
+        LogTopic.state,
+        'postCollection(${widget.order.orderId}) unexpected error',
+        error: e,
+        stackTrace: stack,
+      );
+      if (!mounted) return;
+      setState(() {
+        _posting = false;
+        _errorMessage = 'Could not record the collection. Try again';
+      });
+    }
   }
 
   @override
@@ -180,9 +235,17 @@ class _CollectPaymentSheetBodyState
               ),
             ),
             const SizedBox(height: 16),
+            if (_errorMessage != null) ...<Widget>[
+              Text(
+                _errorMessage!,
+                style: AppTypography.micro.copyWith(color: AppColors.danger),
+              ),
+              const SizedBox(height: 8),
+            ],
             AppButton(
               label: 'Confirm & continue',
-              onPressed: _isBalanced ? _onConfirm : null,
+              isLoading: _posting,
+              onPressed: _isBalanced && !_posting ? _onConfirm : null,
             ),
           ],
         ),
