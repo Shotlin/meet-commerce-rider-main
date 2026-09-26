@@ -38,6 +38,17 @@ void main() {
       expect(find.text('LOCATION'), findsOneWidget);
       expect(find.text('High-precision location'), findsOneWidget);
       expect(find.text('Help & support'), findsOneWidget);
+      // At least the notifications + order-alerts switches exist; how
+      // many are materialized depends on the viewport (ListView builds
+      // lazily), so assert a floor, not a count.
+      expect(find.byType(Switch), findsAtLeastNWidgets(2));
+      await tester.scrollUntilVisible(
+        find.text('High-precision location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('High-precision location'), findsOneWidget);
+      expect(find.byType(Switch), findsNWidgets(3));
       // The ABOUT footer sits below the new LOCATION/MAPS status rows —
       // scroll to it in the default test viewport.
       await tester.scrollUntilVisible(
@@ -46,8 +57,6 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('App version'), findsOneWidget);
-      // Three switches: notifications, order alerts, location precision.
-      expect(find.byType(Switch), findsNWidgets(3));
     },
   );
 
