@@ -40,6 +40,27 @@ class NotificationService {
   static const String _channelDesc =
       'Order offers, delivery updates and approval alerts';
 
+  /// A dedicated, higher-urgency channel for the incoming-order alert
+  /// (`IncomingOrderAlertListener`) — a real, swipeable system notification
+  /// that fires alongside the in-app looping sound + vibration, so an order
+  /// still shows up in the notification shade with its own sound even if
+  /// the rider is on another app or the screen is off. `new_order_alert`
+  /// is the raw Android resource copied from the same asset the in-app
+  /// `AlertSoundPlayer` loops (see `android/app/src/main/res/raw/` +
+  /// `res/raw/keep.xml`, which the release resource shrinker needs or it
+  /// silently strips a sound only ever referenced by name at runtime).
+  ///
+  /// Android notification-channel settings (importance, sound, vibration)
+  /// are immutable once the channel id is first created on a device — a
+  /// future change to the sound/importance here needs a NEW channel id to
+  /// actually take effect on devices that already have this one.
+  static const String _orderAlertChannelId = 'meetcommerce_rider_order_alert';
+  static const String _orderAlertChannelName = 'Incoming Order Alerts';
+  static const String _orderAlertChannelDesc =
+      'A new delivery offer is waiting for you';
+  static const int _orderAlertNotificationId = 990001;
+  bool _orderAlertChannelReady = false;
+
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
 
@@ -208,6 +229,95 @@ class NotificationService {
       notificationDetails: details,
       payload: message.data['type']?.toString(),
     );
+  }
+
+  /// Creates the incoming-order-alert channel on first use. Safe to call
+  /// repeatedly — a no-op once the channel exists for this app install.
+  Future<void> _ensureOrderAlertChannel() async {
+    if (_orderAlertChannelReady || !Platform.isAndroid) return;
+    try {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        _orderAlertChannelId,
+        _orderAlertChannelName,
+        description: _orderAlertChannelDesc,
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('new_order_alert'),
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+        enableVibration: true,
+      );
+      final AndroidFlutterLocalNotificationsPlugin? androidPlugin = _local
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidPlugin?.createNotificationChannel(channel);
+      _orderAlertChannelReady = true;
+    } catch (e, st) {
+      AppLogger.warn(
+        LogTopic.notifications,
+        'Failed to create the order-alert notification channel',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  /// Shows the real system notification for an incoming order — a second,
+  /// OS-level signal alongside `AlertSoundPlayer`/`AlertVibrationPlayer`'s
+  /// in-app loop (`IncomingOrderAlertListener`), so the order shows up in
+  /// the notification shade with its own sound+vibration even if the app
+  /// isn't the foreground activity right now. A fixed notification id
+  /// means a second call while one is already showing replaces it rather
+  /// than stacking duplicates.
+  Future<void> showOrderAlertNotification({
+    required String title,
+    required String body,
+  }) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _ensureOrderAlertChannel();
+      await _local.show(
+        id: _orderAlertNotificationId,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _orderAlertChannelId,
+            _orderAlertChannelName,
+            channelDescription: _orderAlertChannelDesc,
+            importance: Importance.max,
+            priority: Priority.high,
+            category: AndroidNotificationCategory.alarm,
+            icon: _notificationIcon,
+            largeIcon: DrawableResourceAndroidBitmap(_notificationLargeIcon),
+            color: AppColors.brand,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound('new_order_alert'),
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            enableVibration: true,
+          ),
+        ),
+      );
+    } catch (e, st) {
+      AppLogger.warn(
+        LogTopic.notifications,
+        'showOrderAlertNotification failed',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  /// Dismisses the incoming-order notification — called the instant the
+  /// offer stops being pending (accepted/declined/expired/taken), mirroring
+  /// how `IncomingOrderAlertListener` stops the in-app sound/vibration loop.
+  Future<void> cancelOrderAlertNotification() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _local.cancel(id: _orderAlertNotificationId);
+    } catch (_) {
+      // Nothing meaningful to recover from a cancel() failure.
+    }
   }
 
   void dispose() {

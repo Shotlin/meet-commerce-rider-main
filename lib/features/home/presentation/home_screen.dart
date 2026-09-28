@@ -212,6 +212,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       activeDeliveryControllerProvider,
     );
     if (active.current != null) return;
+    // Forget offers that are gone so the same order can be offered again
+    // (e.g. reassigned away and back to this rider).
+    _shownOfferIds.retainWhere(
+      (String id) => offers.offers.any((DeliveryOrder o) => o.orderId == id),
+    );
     for (final DeliveryOrder offer in offers.offers) {
       if (_shownOfferIds.contains(offer.orderId)) continue;
       _shownOfferIds.add(offer.orderId);

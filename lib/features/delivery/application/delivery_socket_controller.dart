@@ -243,6 +243,14 @@ class DeliverySocketController with WidgetsBindingObserver {
             // dormant-but-present on the backend) — the firm-assignment
             // resolver creates rows already ACCEPTED, so a rider on the
             // new flow never observes `assigned` here.
+            // A fresh offer for an order this device still tracks as
+            // accepted/picked-up means the previous assignment was
+            // cancelled (admin reassign away and back) — drop the stale
+            // active order and scan state so accepting starts clean.
+            if (_activeDelivery.current?.orderId == order.orderId) {
+              _activeDelivery.remove(order.orderId);
+            }
+            _pickupSession?.remove(order.orderId);
             _offers.upsertOffer(order);
           case AssignmentStatus.accepted:
           case AssignmentStatus.inTransit:
@@ -364,6 +372,13 @@ class DeliverySocketController with WidgetsBindingObserver {
     }
     _offers.applyStatus(orderId, status);
     _activeDelivery.applyExternalStatus(orderId, status);
+    // Accept (or pickup) confirmed for an order this device is not yet
+    // tracking as active: fetch it so the delivery screen opens.
+    if ((status == AssignmentStatus.accepted ||
+            status == AssignmentStatus.inTransit) &&
+        _activeDelivery.current?.orderId != orderId) {
+      unawaited(_reconcileOnResume());
+    }
     if (status == AssignmentStatus.delivered ||
         status == AssignmentStatus.cancelled) {
       _pickupSession?.remove(orderId);

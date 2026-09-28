@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meet_commerce_rider_main/core/alerts/alert_sound_player.dart';
 import 'package:meet_commerce_rider_main/core/alerts/alert_vibration_player.dart';
+import 'package:meet_commerce_rider_main/core/alerts/order_alert_notification.dart';
 import 'package:meet_commerce_rider_main/core/providers.dart';
 import 'package:meet_commerce_rider_main/features/delivery/application/offers_controller.dart';
 import 'package:meet_commerce_rider_main/features/delivery/domain/assignment_status.dart';
@@ -61,6 +62,25 @@ class _FakeVibrationPlayer implements AlertVibrationPlayer {
   }
 }
 
+class _FakeOrderAlertNotifier implements OrderAlertNotifier {
+  int showCalls = 0;
+  int cancelCalls = 0;
+  String? lastTitle;
+  String? lastBody;
+
+  @override
+  Future<void> show({required String title, required String body}) async {
+    showCalls++;
+    lastTitle = title;
+    lastBody = body;
+  }
+
+  @override
+  Future<void> cancel() async {
+    cancelCalls++;
+  }
+}
+
 DeliveryOrder _order(String id, AssignmentStatus status) => DeliveryOrder(
   orderId: id,
   orderNumber: id,
@@ -78,11 +98,13 @@ void main() {
   late OffersController controller;
   late _FakeSoundPlayer sound;
   late _FakeVibrationPlayer vibration;
+  late _FakeOrderAlertNotifier notification;
 
   setUp(() {
     controller = OffersController.local();
     sound = _FakeSoundPlayer();
     vibration = _FakeVibrationPlayer();
+    notification = _FakeOrderAlertNotifier();
   });
 
   Widget harness() {
@@ -91,6 +113,7 @@ void main() {
         offersControllerProvider.overrideWith((Ref ref) => controller),
         alertSoundPlayerProvider.overrideWithValue(sound),
         alertVibrationPlayerProvider.overrideWithValue(vibration),
+        orderAlertNotifierProvider.overrideWithValue(notification),
       ],
       child: const MaterialApp(
         home: IncomingOrderAlertListener(child: SizedBox.shrink()),
@@ -107,8 +130,8 @@ void main() {
   });
 
   testWidgets(
-    'a new incoming order starts both the sound loop and the vibration '
-    'loop in real time',
+    'a new incoming order starts the sound loop, the vibration loop, AND '
+    'a real system notification, all in real time',
     (WidgetTester tester) async {
       await tester.pumpWidget(harness());
       await tester.pumpAndSettle();
@@ -120,6 +143,10 @@ void main() {
       expect(vibration.startLoopCalls, 1);
       expect(sound.stopCalls, 0);
       expect(vibration.stopCalls, 0);
+      expect(notification.showCalls, 1);
+      expect(notification.cancelCalls, 0);
+      expect(notification.lastBody, contains('#o1'));
+      expect(notification.lastBody, contains('₹10'));
     },
   );
 
@@ -139,6 +166,7 @@ void main() {
 
       expect(sound.stopCalls, 1);
       expect(vibration.stopCalls, 1);
+      expect(notification.cancelCalls, 1);
     },
   );
 
@@ -230,6 +258,7 @@ void main() {
 
       expect(sound.playLoopCalls, 1);
       expect(vibration.startLoopCalls, 1);
+      expect(notification.showCalls, 1);
     },
   );
 }

@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/alerts/alert_sound_player.dart';
 import '../../../core/alerts/alert_vibration_player.dart';
+import '../../../core/alerts/order_alert_notification.dart';
 import '../../../core/providers.dart';
 import '../application/incoming_order_alert_decision.dart';
 import '../application/offers_controller.dart';
+import '../domain/assignment_status.dart';
+import '../domain/delivery_order.dart';
 
 /// Mounted once, at the app root (see `main.dart`'s `MaterialApp.router`
 /// `builder`), so the incoming-order alarm rings regardless of which
@@ -56,12 +59,14 @@ class _IncomingOrderAlertListenerState
   // unmounted is unsafe").
   late final AlertSoundPlayer _sound;
   late final AlertVibrationPlayer _vibration;
+  late final OrderAlertNotifier _notification;
 
   @override
   void initState() {
     super.initState();
     _sound = ref.read(alertSoundPlayerProvider);
     _vibration = ref.read(alertVibrationPlayerProvider);
+    _notification = ref.read(orderAlertNotifierProvider);
     // Sync once against whatever state the controller already holds —
     // covers a hot-restart, or an offer that was reconciled from
     // GET /delivery/orders before this widget attached its listener.
@@ -98,10 +103,28 @@ class _IncomingOrderAlertListenerState
     if (shouldPlay) {
       unawaited(_sound.playLoop());
       unawaited(_vibration.startLoop());
+      unawaited(_notification.show(
+        title: 'New delivery offer',
+        body: _notificationBody(controller.offers),
+      ));
     } else {
       unawaited(_sound.stop());
       unawaited(_vibration.stop());
+      unawaited(_notification.cancel());
     }
+  }
+
+  /// A short, informative line for the system notification — the order
+  /// number and earning when the first pending offer has them, a generic
+  /// fallback otherwise (never blocks the alert on a missing field).
+  String _notificationBody(List<DeliveryOrder> offers) {
+    for (final DeliveryOrder offer in offers) {
+      if (offer.assignmentStatus == AssignmentStatus.assigned) {
+        final String amount = offer.riderEarning.toStringAsFixed(0);
+        return '#${offer.orderNumber} • ₹$amount — tap to view';
+      }
+    }
+    return 'A new order is waiting for you';
   }
 
   @override
@@ -112,6 +135,7 @@ class _IncomingOrderAlertListenerState
     if (_alerting) {
       unawaited(_sound.stop());
       unawaited(_vibration.stop());
+      unawaited(_notification.cancel());
     }
     super.dispose();
   }

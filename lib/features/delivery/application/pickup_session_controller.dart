@@ -53,7 +53,16 @@ class PickupSessionController extends ChangeNotifier {
   /// caller clears the session explicitly via [reset] when the whole
   /// flow ends.
   void syncFromOrder(DeliveryOrder? order) {
-    if (order == null || _status.containsKey(order.orderId)) return;
+    if (order == null) return;
+    // Local state says picked up/verified but the server still has the
+    // order as merely accepted: a stale entry from an earlier assignment
+    // of the same order (reassigned away and back). Start over.
+    if (order.assignmentStatus == AssignmentStatus.accepted &&
+        _status[order.orderId] == PickupScanStatus.pickedUp) {
+      _status.remove(order.orderId);
+      _verifications.remove(order.orderId);
+    }
+    if (_status.containsKey(order.orderId)) return;
     _status[order.orderId] =
         order.assignmentStatus == AssignmentStatus.inTransit
         ? PickupScanStatus.pickedUp
