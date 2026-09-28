@@ -25,6 +25,15 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:usesCleartextTraffic="false">
 
+        <!-- Icon + accent colour Android uses for FCM notifications shown while
+             the app is closed (the small icon must be a white silhouette). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

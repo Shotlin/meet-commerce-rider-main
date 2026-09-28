@@ -25,3 +25,17 @@ final Provider<ValueNotifier<GeoPoint?>> riderLocationNotifierProvider =
       ref.onDispose(notifier.dispose);
       return notifier;
     });
+
+/// The rider's latest **reliable** travel heading (degrees clockwise from
+/// north), or `null` when none is known yet.
+///
+/// Written by `LocationLifecycleManager` alongside every fix, but only when
+/// the device is actually moving — a stationary phone reports a meaningless
+/// heading and would spin the marker / map. While stopped, the last reliable
+/// value is kept.
+final Provider<ValueNotifier<double?>> riderHeadingNotifierProvider =
+    Provider<ValueNotifier<double?>>((Ref ref) {
+      final ValueNotifier<double?> notifier = ValueNotifier<double?>(null);
+      ref.onDispose(notifier.dispose);
+      return notifier;
+    });

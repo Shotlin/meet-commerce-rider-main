@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../theme/app_colors.dart';
 import '../utils/app_logger.dart';
 import '../../firebase_options.dart';
 
@@ -28,6 +29,11 @@ class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
+
+  /// Android drawable resources (android/app/src/main/res): the white-silhouette
+  /// status-bar icon and the full-colour large icon of the Freashcut Rider mark.
+  static const String _notificationIcon = 'ic_stat_notification';
+  static const String _notificationLargeIcon = 'ic_notification_large';
 
   static const String _channelId = 'meetcommerce_rider_high';
   static const String _channelName = 'Freashcut Rider Notifications';
@@ -56,7 +62,7 @@ class NotificationService {
     _initialized = true;
 
     if (!DefaultFirebaseOptions.isConfigured) {
-      // No Firebase project is registered for com.meetcommerce.rider yet, so
+      // No Firebase project is registered for com.freshcuts.rider yet, so
       // the placeholder options in `firebase_options.dart` are deliberately
       // invalid. Calling Firebase.initializeApp with them throws a native
       // NSException (FIRInstallations) that Dart cannot catch — it kills the
@@ -143,7 +149,7 @@ class NotificationService {
 
       // Initialize local notifications
       const InitializationSettings initSettings = InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings(_notificationIcon),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
           requestBadgePermission: false,
@@ -182,6 +188,11 @@ class NotificationService {
         channelDescription: _channelDesc,
         importance: Importance.max,
         priority: Priority.high,
+        // Freashcut Rider mark: white silhouette in the status bar, the
+        // full-colour logo beside the text.
+        icon: _notificationIcon,
+        largeIcon: DrawableResourceAndroidBitmap(_notificationLargeIcon),
+        color: AppColors.brand,
       ),
       iOS: DarwinNotificationDetails(
         presentAlert: true,

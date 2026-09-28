@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Release builds shrink resources that have no static reference. These are
+     looked up by NAME at runtime (flutter_local_notifications), so keep them. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification_large,@drawable/ic_stat_notification" />

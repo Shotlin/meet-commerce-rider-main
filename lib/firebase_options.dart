@@ -2,7 +2,7 @@
 //
 // UNCONFIGURED BY DESIGN — see the explanation below. Regenerate this file
 // with the FlutterFire CLI once the Meet Commerce Firebase project exists and
-// has apps registered for the `com.meetcommerce.rider` Android/iOS ids.
+// has apps registered for the `com.freshcuts.rider` Android/iOS ids.
 // ignore_for_file: lines_longer_than_80_chars, avoid_classes_with_only_static_members
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
@@ -15,7 +15,12 @@ class DefaultFirebaseOptions {
   /// False while the placeholder values below are in place. Push/analytics
   /// code paths must treat Firebase as unavailable in that state instead of
   /// reporting into somebody else's project.
-  static const bool isConfigured = false;
+  ///
+  /// Android is registered in the `freshcuts-slin` project; iOS is not yet
+  /// (no GoogleService-Info.plist), and initializing it with the dummy values
+  /// below crashes natively, so it stays disabled.
+  static bool get isConfigured =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -50,17 +55,17 @@ class DefaultFirebaseOptions {
   // initialize rather than silently sending this product's push tokens and
   // analytics into an unrelated live project.
   //
-  // Required external step before release: register Android (com.meetcommerce.rider,
-  // com.meetcommerce.rider.dev, com.meetcommerce.rider.staging) and iOS
-  // (com.meetcommerce.rider) apps in the Meet Commerce Firebase project, then
+  // Required external step before release: register Android (com.freshcuts.rider,
+  // com.freshcuts.rider.dev, com.freshcuts.rider.staging) and iOS
+  // (com.freshcuts.rider) apps in the Meet Commerce Firebase project, then
   // replace this file and android/app/google-services.json with the generated
   // configuration.
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'dummy-not-configured',
-    appId: '1:000000000000:android:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'meet-commerce-dev-unconfigured',
-    storageBucket: 'meet-commerce-dev-unconfigured.firebasestorage.app',
+    apiKey: 'AIzaSyCaKRF8ulk2sW5my6vJ-KmKZxPHFeuCh_s',
+    appId: '1:493517915093:android:eab57e958d836c795af35c',
+    messagingSenderId: '493517915093',
+    projectId: 'freshcuts-slin',
+    storageBucket: 'freshcuts-slin.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -69,6 +74,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '000000000000',
     projectId: 'meet-commerce-dev-unconfigured',
     storageBucket: 'meet-commerce-dev-unconfigured.firebasestorage.app',
-    iosBundleId: 'com.meetcommerce.rider',
+    iosBundleId: 'com.freshcuts.rider',
   );
 }

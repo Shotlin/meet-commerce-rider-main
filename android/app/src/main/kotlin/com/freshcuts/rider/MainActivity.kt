@@ -1,4 +1,4 @@
-package com.meetcommerce.rider
+package com.freshcuts.rider
 
 import io.flutter.embedding.android.FlutterActivity
 

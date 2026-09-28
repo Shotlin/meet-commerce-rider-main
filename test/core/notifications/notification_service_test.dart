@@ -1,46 +1,55 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:meet_commerce_rider_main/core/notifications/notification_service.dart';
 import 'package:meet_commerce_rider_main/firebase_options.dart';
 
-/// Guards the unconfigured-Firebase contract.
+/// Guards the Firebase configuration contract.
 ///
-/// The app id `com.meetcommerce.rider` has no registered Firebase project yet,
-/// so `firebase_options.dart` holds deliberately invalid placeholder values.
-/// Calling `Firebase.initializeApp` with them throws a native NSException
-/// (FIRInstallations) on iOS *outside* Dart's ability to catch it — the process
-/// dies before the first frame. These tests lock the guard so that regression
-/// can never come back silently.
+/// Android is registered in the `freshcuts-slin` project. iOS has no
+/// GoogleService-Info.plist yet, so its options are deliberately invalid
+/// placeholders; calling `Firebase.initializeApp` with them throws a native
+/// NSException (FIRInstallations) outside Dart's ability to catch it. These
+/// tests lock the guard so that regression can never come back silently.
 void main() {
-  test('Firebase options are placeholders, not a real project', () {
+  test('Android uses the real freshcuts-slin project', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    expect(DefaultFirebaseOptions.isConfigured, isTrue);
+    expect(DefaultFirebaseOptions.android.projectId, 'freshcuts-slin');
     expect(
-      DefaultFirebaseOptions.isConfigured,
-      isFalse,
-      reason: 'Flip this to true only with generated FlutterFire config',
+      DefaultFirebaseOptions.android.appId,
+      '1:493517915093:android:eab57e958d836c795af35c',
     );
-    expect(DefaultFirebaseOptions.android.apiKey, contains('not-configured'));
-    expect(DefaultFirebaseOptions.ios.apiKey, contains('not-configured'));
-    expect(DefaultFirebaseOptions.android.appId, startsWith('1:000000000000'));
-    expect(DefaultFirebaseOptions.ios.appId, startsWith('1:000000000000'));
   });
 
-  test('NotificationService.initialize() never touches the native Firebase SDK '
-      'while unconfigured', () async {
-    // Must complete (not throw) and leave Firebase untouched: touching it is
-    // what crashes the process on iOS.
-    await NotificationService.instance.initialize();
+  group('iOS (unconfigured)', () {
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
 
-    expect(Firebase.apps, isEmpty);
-    expect(NotificationService.instance.fcmToken, isNull);
-  });
+    test('options are placeholders, not a real project', () {
+      expect(DefaultFirebaseOptions.isConfigured, isFalse);
+      expect(DefaultFirebaseOptions.ios.apiKey, contains('not-configured'));
+      expect(DefaultFirebaseOptions.ios.appId, startsWith('1:000000000000'));
+    });
 
-  test('initialize() is idempotent — repeat calls are no-ops', () async {
-    await NotificationService.instance.initialize();
-    await NotificationService.instance.initialize();
+    test('NotificationService.initialize() never touches the native Firebase '
+        'SDK while unconfigured', () async {
+      await NotificationService.instance.initialize();
 
-    expect(Firebase.apps, isEmpty);
-    expect(NotificationService.instance.fcmToken, isNull);
+      expect(Firebase.apps, isEmpty);
+      expect(NotificationService.instance.fcmToken, isNull);
+    });
+
+    test('initialize() is idempotent — repeat calls are no-ops', () async {
+      await NotificationService.instance.initialize();
+      await NotificationService.instance.initialize();
+
+      expect(Firebase.apps, isEmpty);
+      expect(NotificationService.instance.fcmToken, isNull);
+    });
   });
 
   group('registerFcmTokenWithBackend', () {

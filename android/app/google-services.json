@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "meet-commerce-dev-unconfigured",
-    "storage_bucket": "meet-commerce-dev-unconfigured.firebasestorage.app"
+    "project_number": "493517915093",
+    "project_id": "freshcuts-slin",
+    "storage_bucket": "freshcuts-slin.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:493517915093:android:b5fd538abecfbdda5af35c",
         "android_client_info": {
-          "package_name": "com.meetcommerce.rider"
+          "package_name": "com.freshcuts.app"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "dummy-not-configured"
+          "current_key": "AIzaSyCaKRF8ulk2sW5my6vJ-KmKZxPHFeuCh_s"
         }
       ],
       "services": {
@@ -26,15 +26,15 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:493517915093:android:eab57e958d836c795af35c",
         "android_client_info": {
-          "package_name": "com.meetcommerce.rider.dev"
+          "package_name": "com.freshcuts.rider"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "dummy-not-configured"
+          "current_key": "AIzaSyCaKRF8ulk2sW5my6vJ-KmKZxPHFeuCh_s"
         }
       ],
       "services": {
@@ -45,15 +45,15 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:493517915093:android:1c829febc50f874c5af35c",
         "android_client_info": {
-          "package_name": "com.meetcommerce.rider.staging"
+          "package_name": "com.freshcuts.vendor"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "dummy-not-configured"
+          "current_key": "AIzaSyCaKRF8ulk2sW5my6vJ-KmKZxPHFeuCh_s"
         }
       ],
       "services": {

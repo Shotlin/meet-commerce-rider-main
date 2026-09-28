@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Accent tint Android applies to the small notification icon. -->
+    <color name="notification_accent">#E61F2C</color>
+</resources>

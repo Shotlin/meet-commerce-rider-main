@@ -85,9 +85,9 @@ abstract final class AppDimensions {
   // Brand mark
   // ────────────────────────────────────────────────────────────────────────
 
-  /// FreshCuts mark size on splash / hero positions.
-  static const double brandMarkLarge = 72;
+  /// Freashcut Rider mark width on splash / hero positions.
+  static const double brandMarkLarge = 150;
 
-  /// FreshCuts mark size in screen headers (login, onboarding).
-  static const double brandMarkSmall = 40;
+  /// Freashcut Rider mark width in screen headers (login, onboarding).
+  static const double brandMarkSmall = 96;
 }

@@ -131,44 +131,63 @@ void main() {
         }),
       );
 
-      final RiderRoute route = await RiderMapsService(
+      final RiderRoute route = (await RiderMapsService(
         client,
-      ).getRoute(const GeoPoint(12.97, 77.59), const GeoPoint(12.95, 77.61));
+      ).getRoute(const GeoPoint(12.97, 77.59), const GeoPoint(12.95, 77.61)))!;
 
       expect(route.points, hasLength(3));
       expect(route.distanceMeters, 3400);
       expect(route.durationSeconds, 600);
     });
 
-    test(
-      'falls back to a straight line when the proxy yields nothing',
-      () async {
-        when(
-          () => client.get<Map<String, dynamic>>(
-            '/maps/ola/directions',
-            queryParameters: any(named: 'queryParameters'),
-            parseData: any(named: 'parseData'),
-          ),
-        ).thenAnswer(
-          (_) async => _envelope(<String, dynamic>{
-            'configured': true,
-            'result': <String, dynamic>{'points': <dynamic>[]},
-          }),
-        );
+    test('returns null (never a straight line) when the proxy yields nothing',
+        () async {
+      when(
+        () => client.get<Map<String, dynamic>>(
+          '/maps/ola/directions',
+          queryParameters: any(named: 'queryParameters'),
+          parseData: any(named: 'parseData'),
+        ),
+      ).thenAnswer(
+        (_) async => _envelope(<String, dynamic>{
+          'configured': true,
+          'result': <String, dynamic>{'points': <dynamic>[]},
+        }),
+      );
 
-        final RiderRoute route = await RiderMapsService(
-          client,
-        ).getRoute(const GeoPoint(12.97, 77.59), const GeoPoint(12.95, 77.61));
+      expect(
+        await RiderMapsService(client).getRoute(
+          const GeoPoint(12.97, 77.59),
+          const GeoPoint(12.95, 77.61),
+        ),
+        isNull,
+      );
+    });
 
-        expect(route.points, hasLength(2));
-        expect(route.points.first.latitude, 12.97);
-        expect(route.points.last.longitude, 77.61);
-        expect(route.distanceMeters, greaterThan(0));
-        expect(route.durationSeconds, greaterThan(0));
-      },
-    );
+    test('returns null when Ola is unconfigured (result: null)', () async {
+      when(
+        () => client.get<Map<String, dynamic>>(
+          '/maps/ola/directions',
+          queryParameters: any(named: 'queryParameters'),
+          parseData: any(named: 'parseData'),
+        ),
+      ).thenAnswer(
+        (_) async => _envelope(<String, dynamic>{
+          'configured': false,
+          'result': null,
+        }),
+      );
 
-    test('falls back to a straight line when the proxy throws', () async {
+      expect(
+        await RiderMapsService(client).getRoute(
+          const GeoPoint(12.97, 77.59),
+          const GeoPoint(12.95, 77.61),
+        ),
+        isNull,
+      );
+    });
+
+    test('returns null when the proxy throws', () async {
       when(
         () => client.get<Map<String, dynamic>>(
           '/maps/ola/directions',
@@ -177,11 +196,30 @@ void main() {
         ),
       ).thenThrow(Exception('offline'));
 
-      final RiderRoute route = await RiderMapsService(
-        client,
-      ).getRoute(const GeoPoint(12.97, 77.59), const GeoPoint(12.95, 77.61));
+      expect(
+        await RiderMapsService(client).getRoute(
+          const GeoPoint(12.97, 77.59),
+          const GeoPoint(12.95, 77.61),
+        ),
+        isNull,
+      );
+    });
 
-      expect(route.points, hasLength(2));
+    test('never calls the proxy for a 0,0 origin', () async {
+      expect(
+        await RiderMapsService(client).getRoute(
+          const GeoPoint(0, 0),
+          const GeoPoint(12.95, 77.61),
+        ),
+        isNull,
+      );
+      verifyNever(
+        () => client.get<Map<String, dynamic>>(
+          any(),
+          queryParameters: any(named: 'queryParameters'),
+          parseData: any(named: 'parseData'),
+        ),
+      );
     });
   });
 

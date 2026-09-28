@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,14 +52,10 @@ class RiderRoute {
 ///
 /// Rendering happens in `RiderMap` (MapLibre native on both platforms)
 /// pointed at [getStyle]'s style URL; routes come from the backend's
-/// Ola Directions proxy with the same straight-line fallback contract
-/// the interim OSRM service had, so the map always has something to
-/// draw and callers never special-case "no route".
+/// Ola Directions proxy and are real road geometry or nothing.
 class RiderMapsService {
   /// Wraps the supplied [client].
   RiderMapsService(this._client);
-
-  static const double _fallbackMetersPerSecond = 6.5;
 
   final ApiClient _client;
 
@@ -98,13 +92,13 @@ class RiderMapsService {
     }
   }
 
-  /// Driving route between two points via the backend's Ola Directions
-  /// proxy. Falls back to a straight line on any failure so the map
-  /// always has something to draw.
-  Future<RiderRoute> getRoute(GeoPoint origin, GeoPoint destination) async {
-    if (!_isValid(origin) || !_isValid(destination)) {
-      return _straightLine(origin, destination);
-    }
+  /// Road-following driving route between two points via the backend's
+  /// Ola Directions proxy. Returns `null` when no real route could be
+  /// obtained (unusable coordinates, Ola unconfigured/failing, malformed
+  /// payload) — never a fabricated straight line, so the caller can show an
+  /// honest error/retry state instead of a route that cuts across buildings.
+  Future<RiderRoute?> getRoute(GeoPoint origin, GeoPoint destination) async {
+    if (!_isValid(origin) || !_isValid(destination)) return null;
     try {
       final ApiEnvelope<Map<String, dynamic>> envelope = await _client
           .get<Map<String, dynamic>>(
@@ -118,15 +112,15 @@ class RiderMapsService {
             parseData: _requireMap,
           );
       final Map<String, dynamic>? data = envelope.data;
-      if (data == null) return _straightLine(origin, destination);
+      if (data == null) return null;
       final Map<String, dynamic> result = _asMap(data['result']);
       final List<GeoPoint> points = _asList(
         result['points'],
       ).map(_pointFrom).whereType<GeoPoint>().toList(growable: false);
       final int? distanceMeters = _asInt(result['distanceMeters']);
       final int? durationSeconds = _asInt(result['durationSeconds']);
-      if (points.isEmpty || distanceMeters == null || durationSeconds == null) {
-        return _straightLine(origin, destination);
+      if (points.length < 2 || distanceMeters == null || durationSeconds == null) {
+        return null;
       }
       return RiderRoute(
         points: points,
@@ -134,7 +128,7 @@ class RiderMapsService {
         durationSeconds: durationSeconds,
       );
     } catch (_) {
-      return _straightLine(origin, destination);
+      return null;
     }
   }
 
@@ -203,36 +197,9 @@ class RiderMapsService {
     return rawUrl;
   }
 
-  RiderRoute _straightLine(GeoPoint origin, GeoPoint destination) {
-    final double meters = _haversineMeters(origin, destination);
-    final int safeDistance = meters.round() <= 0 ? 1 : meters.round();
-    return RiderRoute(
-      points: <GeoPoint>[origin, destination],
-      distanceMeters: safeDistance,
-      durationSeconds: (meters / _fallbackMetersPerSecond).ceil(),
-    );
-  }
-
   static bool _isValid(GeoPoint p) =>
       p.latitude != 0 ||
       p.longitude != 0; // 0,0 is never a valid operational point
-
-  static double _haversineMeters(GeoPoint a, GeoPoint b) {
-    const double earthRadius = 6371000;
-    final double dLat = _degreesToRadians(b.latitude - a.latitude);
-    final double dLng = _degreesToRadians(b.longitude - a.longitude);
-    final double lat1 = _degreesToRadians(a.latitude);
-    final double lat2 = _degreesToRadians(b.latitude);
-    final double h =
-        math.pow(math.sin(dLat / 2), 2).toDouble() +
-        math.cos(lat1) *
-            math.cos(lat2) *
-            math.pow(math.sin(dLng / 2), 2).toDouble();
-    return 2 * earthRadius * math.asin(math.sqrt(h));
-  }
-
-  static double _degreesToRadians(double degrees) =>
-      degrees * 3.141592653589793 / 180.0;
 
   static Map<String, dynamic> _requireMap(Object? raw) {
     if (raw is Map) {

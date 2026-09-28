@@ -29,13 +29,16 @@ class LocationLifecycleManager {
     required LocationPermissionService permissionService,
     required SocketClient socket,
     required DeliveryApi deliveryApi,
+    ValueNotifier<double?>? riderHeadingNotifier,
   }) : _notifier = riderLocationNotifier,
+       _headingNotifier = riderHeadingNotifier,
        _locationService = locationService,
        _permissionService = permissionService,
        _socket = socket,
        _deliveryApi = deliveryApi;
 
   final ValueNotifier<GeoPoint?> _notifier;
+  final ValueNotifier<double?>? _headingNotifier;
   final LocationService _locationService;
   final LocationPermissionService _permissionService;
   final SocketClient _socket;
@@ -186,9 +189,17 @@ class LocationLifecycleManager {
     _subscription = null;
   }
 
+  /// Minimum speed (m/s, ≈ 5.4 km/h) for a fix's heading to be believed.
+  static const double _minSpeedForHeading = 1.5;
+
   void _publish(Position p) {
     // Update the map marker notifier.
     _notifier.value = GeoPoint(p.latitude, p.longitude);
+    // Heading is only meaningful while actually moving; otherwise keep the
+    // last reliable one rather than publishing noise.
+    if (p.speed >= _minSpeedForHeading && p.heading >= 0 && p.heading <= 360) {
+      _headingNotifier?.value = p.heading % 360;
+    }
 
     // Upload to backend (throttled).
     final DateTime now = DateTime.now();

@@ -68,6 +68,12 @@ class _ActiveDeliveryMapScreenState
 
   ValueNotifier<GeoPoint?>? _riderNotifier;
   void Function()? _riderListener;
+  ValueNotifier<double?>? _headingNotifier;
+  void Function()? _headingListener;
+
+  /// What the map camera is doing — drives the recenter / overview buttons.
+  final ValueNotifier<RiderCameraMode> _cameraMode =
+      ValueNotifier<RiderCameraMode>(RiderCameraMode.follow);
 
   String? _appliedOrderId;
   AssignmentStatus? _appliedStatus;
@@ -115,14 +121,20 @@ class _ActiveDeliveryMapScreenState
     _riderNotifier = notifier;
     _riderListener = _onRiderPositionChanged;
     notifier.addListener(_riderListener!);
+    final ActiveDeliveryMapController map = ref
+        .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider);
     final GeoPoint? seed = notifier.value;
     if (seed != null) {
-      ref
-          .read<ActiveDeliveryMapController>(
-            activeDeliveryMapControllerProvider,
-          )
-          .updateRiderPosition(seed);
+      map.updateRiderPosition(seed);
     }
+
+    final ValueNotifier<double?> heading = ref.read<ValueNotifier<double?>>(
+      riderHeadingNotifierProvider,
+    );
+    _headingNotifier = heading;
+    _headingListener = () => map.updateRiderHeading(heading.value);
+    heading.addListener(_headingListener!);
+    map.updateRiderHeading(heading.value);
   }
 
   void _detachRiderNotifier() {
@@ -133,6 +145,13 @@ class _ActiveDeliveryMapScreenState
     }
     _riderNotifier = null;
     _riderListener = null;
+    final ValueNotifier<double?>? h = _headingNotifier;
+    final void Function()? hl = _headingListener;
+    if (h != null && hl != null) {
+      h.removeListener(hl);
+    }
+    _headingNotifier = null;
+    _headingListener = null;
   }
 
   void _onRiderPositionChanged() {
@@ -164,6 +183,7 @@ class _ActiveDeliveryMapScreenState
   @override
   void dispose() {
     _detachRiderNotifier();
+    _cameraMode.dispose();
     super.dispose();
   }
 
@@ -171,18 +191,47 @@ class _ActiveDeliveryMapScreenState
   // Camera autopilot
   // ---------------------------------------------------------------------------
 
-  void _onUserPan() {
-    ref
-        .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider)
-        .setShowRecenterButton(true);
+  void _onCameraModeChanged(RiderCameraMode mode) {
+    _cameraMode.value = mode;
   }
 
-  void _onRecenterPressed() {
-    _mapHandle?.recenter();
-    ref
-        .read<ActiveDeliveryMapController>(activeDeliveryMapControllerProvider)
-        .setShowRecenterButton(false);
+  /// Recenter: go to the rider's *latest* position right now, at navigation
+  /// zoom and heading, and resume follow mode. A fresh one-shot GPS read
+  /// runs alongside so a stale stream value can't leave the camera behind.
+  Future<void> _onRecenterPressed() async {
+    final ValueNotifier<GeoPoint?> notifier = ref.read<ValueNotifier<GeoPoint?>>(
+      riderLocationNotifierProvider,
+    );
+    if (notifier.value == null) {
+      _showLocationHint('Getting your location…');
+      unawaited(_startLocationStream());
+    } else {
+      _mapHandle?.recenter();
+    }
+    final position = await ref
+        .read(locationServiceProvider)
+        .getCurrentPosition();
+    if (!mounted || position == null) return;
+    final GeoPoint fresh = GeoPoint(position.latitude, position.longitude);
+    if (notifier.value == fresh) return;
+    notifier.value = fresh; // the map follows it (rider marker + camera)
+    if (_cameraMode.value == RiderCameraMode.follow) {
+      _mapHandle?.recenter();
+    }
   }
+
+  void _showLocationHint(String message) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  void _onOverviewPressed() => _mapHandle?.overview();
 
   // ---------------------------------------------------------------------------
   // Build
@@ -235,7 +284,7 @@ class _ActiveDeliveryMapScreenState
                     child: _MapLayer(
                       order: order,
                       onReady: (RiderMapHandle handle) => _mapHandle = handle,
-                      onUserPan: _onUserPan,
+                      onCameraModeChanged: _onCameraModeChanged,
                     ),
                   ),
                   Positioned(
@@ -248,6 +297,7 @@ class _ActiveDeliveryMapScreenState
                         _NavTopBar(
                           status: order.assignmentStatus,
                           order: order,
+                          onRetryLocation: _startLocationStream,
                         ),
                       ],
                     ),
@@ -256,7 +306,31 @@ class _ActiveDeliveryMapScreenState
                   Positioned(
                     right: 16,
                     bottom: 16,
-                    child: _RecenterButton(onPressed: _onRecenterPressed),
+                    child: ValueListenableBuilder<RiderCameraMode>(
+                      valueListenable: _cameraMode,
+                      builder: (BuildContext context, RiderCameraMode mode, _) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            _MapFab(
+                              icon: Icons.route_outlined,
+                              tooltip: 'Show full route',
+                              active: mode == RiderCameraMode.overview,
+                              onPressed: _onOverviewPressed,
+                            ),
+                            const SizedBox(height: 12),
+                            _MapFab(
+                              icon: mode == RiderCameraMode.follow
+                                  ? Icons.navigation
+                                  : Icons.my_location,
+                              tooltip: 'Recenter on me',
+                              active: mode == RiderCameraMode.follow,
+                              onPressed: _onRecenterPressed,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -307,50 +381,35 @@ class _MapLayer extends ConsumerWidget {
   const _MapLayer({
     required this.order,
     required this.onReady,
-    required this.onUserPan,
+    required this.onCameraModeChanged,
   });
 
   final DeliveryOrder order;
   final ValueChanged<RiderMapHandle> onReady;
-  final VoidCallback onUserPan;
+  final ValueChanged<RiderCameraMode> onCameraModeChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The controller is the single source for marker / route / camera
+    // inputs — GPS fixes reach it through the screen's notifier listener,
+    // never through a state write during build.
     final ActiveDeliveryMapController map = ref
         .watch<ActiveDeliveryMapController>(
           activeDeliveryMapControllerProvider,
         );
-    final ValueNotifier<GeoPoint?> rider = ref.read<ValueNotifier<GeoPoint?>>(
-      riderLocationNotifierProvider,
-    );
 
-    return ValueListenableBuilder<GeoPoint?>(
-      valueListenable: rider,
-      builder: (BuildContext context, GeoPoint? riderPos, _) {
-        // Keep the controller's rider marker/camera state in sync with
-        // the notifier (the surrounding screen never rebuilds on GPS
-        // ticks — R25.1).
-        ref
-            .read<ActiveDeliveryMapController>(
-              activeDeliveryMapControllerProvider,
-            )
-            .updateRiderPosition(
-              riderPos ?? map.riderPosition ?? _defaultTarget,
-            );
-        return RiderMap(
-          availability: ref.watch(olaMapsAvailabilityProvider.future),
-          markers: map.markers,
-          route: map.route,
-          followTarget: riderPos ?? map.riderPosition,
-          fitPoints: map.fitPoints,
-          pitched: false,
-          initialZoom: 14,
-          onUserPan: onUserPan,
-          onReady: onReady,
-          fallbackBuilder: (BuildContext context) =>
-              const _MapUnavailablePanel(),
-        );
-      },
+    return RiderMap(
+      availability: ref.watch(olaMapsAvailabilityProvider.future),
+      markers: map.markers,
+      route: map.route,
+      riderPosition: map.riderPosition,
+      riderHeading: map.riderHeading,
+      fitPoints: map.fitPoints,
+      overviewToken: map.overviewToken,
+      pitched: false,
+      onCameraModeChanged: onCameraModeChanged,
+      onReady: onReady,
+      fallbackBuilder: (BuildContext context) => const _MapUnavailablePanel(),
     );
   }
 }
@@ -394,8 +453,6 @@ class _MapUnavailablePanel extends StatelessWidget {
   }
 }
 
-const GeoPoint _defaultTarget = GeoPoint(12.9716, 77.5946);
-
 // ---------------------------------------------------------------------------
 // Top navigation bar (status + ETA card)
 // ---------------------------------------------------------------------------
@@ -404,10 +461,17 @@ const GeoPoint _defaultTarget = GeoPoint(12.9716, 77.5946);
 /// ETA / distance card on the right. Glass-morphism look:
 /// translucent white surface, soft shadow, rounded corners.
 class _NavTopBar extends ConsumerWidget {
-  const _NavTopBar({required this.status, required this.order});
+  const _NavTopBar({
+    required this.status,
+    required this.order,
+    required this.onRetryLocation,
+  });
 
   final AssignmentStatus status;
   final DeliveryOrder order;
+
+  /// Re-kicks the GPS stream (no fix / permission problem).
+  final Future<void> Function() onRetryLocation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -426,9 +490,14 @@ class _NavTopBar extends ConsumerWidget {
 
     // §11 top card: the FreshCuts store the rider is heading to (only
     // in the pickup phase — in transit belongs to the customer).
-    final String? headline = status == AssignmentStatus.accepted
-        ? order.storeAddress.name
-        : null;
+    final String? headline = switch (status) {
+      AssignmentStatus.accepted => order.storeAddress.name,
+      AssignmentStatus.inTransit =>
+        order.customerAddress.name.isNotEmpty
+            ? order.customerAddress.name
+            : null,
+      _ => null,
+    };
 
     final double? meters = map.distanceMeters;
     final int? etaMin = map.etaMinutes;
@@ -512,12 +581,95 @@ class _NavTopBar extends ConsumerWidget {
                 ),
               ],
             ),
+          )
+        else
+          _RouteStatusChip(
+            status: map.routeStatus,
+            onRetryRoute: map.retryRoute,
+            onRetryLocation: onRetryLocation,
           ),
         const SizedBox(width: 8),
         _RefreshButton(
           onPressed: () => ref
               .read<DeliverySocketController>(deliverySocketControllerProvider)
               .refreshOrders(),
+        ),
+      ],
+    );
+  }
+}
+
+/// What sits where the distance / ETA card goes while there is no real road
+/// route yet — the rider always sees *why* (locating, routing, or failed with
+/// a retry), never a made-up figure.
+class _RouteStatusChip extends StatelessWidget {
+  const _RouteStatusChip({
+    required this.status,
+    required this.onRetryRoute,
+    required this.onRetryLocation,
+  });
+
+  final MapRouteStatus status;
+  final VoidCallback onRetryRoute;
+  final Future<void> Function() onRetryLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case MapRouteStatus.none:
+      case MapRouteStatus.ready:
+        return const SizedBox.shrink();
+      case MapRouteStatus.awaitingLocation:
+        return InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => unawaited(onRetryLocation()),
+          child: const _GlassCard(child: _ChipSpinner(label: 'Locating you…')),
+        );
+      case MapRouteStatus.loading:
+        return const _GlassCard(child: _ChipSpinner(label: 'Finding route…'));
+      case MapRouteStatus.failed:
+        return InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onRetryRoute,
+          child: _GlassCard(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Icon(Icons.refresh, size: 16, color: AppColors.danger),
+                const SizedBox(width: 6),
+                Text(
+                  'Route unavailable · Retry',
+                  style: AppTypography.label.copyWith(
+                    color: AppColors.charcoal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+    }
+  }
+}
+
+class _ChipSpinner extends StatelessWidget {
+  const _ChipSpinner({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: AppTypography.label.copyWith(color: AppColors.charcoal),
         ),
       ],
     );
@@ -599,25 +751,42 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-class _RecenterButton extends ConsumerWidget {
-  const _RecenterButton({required this.onPressed});
+class _MapFab extends StatelessWidget {
+  const _MapFab({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.active = false,
+  });
 
+  final IconData icon;
+  final String tooltip;
   final VoidCallback onPressed;
 
+  /// The mode this button represents is currently on.
+  final bool active;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Material(
-      color: AppColors.white,
-      shape: const CircleBorder(),
-      elevation: 6,
-      shadowColor: const Color(0x33000000),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onPressed,
-        child: const SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(Icons.my_location, color: AppColors.black, size: 22),
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: AppColors.white,
+        shape: const CircleBorder(),
+        elevation: 6,
+        shadowColor: const Color(0x33000000),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(
+              icon,
+              color: active ? AppColors.mapBlue : AppColors.black,
+              size: 22,
+            ),
+          ),
         ),
       ),
     );

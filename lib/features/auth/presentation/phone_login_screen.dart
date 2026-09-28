@@ -133,7 +133,10 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
                   const SizedBox(height: 56),
 
                   // ── Brand header (design §7: minimal logo/header) ──────
-                  const BrandMark(size: AppDimensions.brandMarkSmall),
+                  const BrandMark(
+                    size: AppDimensions.brandMarkSmall,
+                    alignment: Alignment.centerLeft,
+                  ),
                   const SizedBox(height: AppDimensions.lg),
 
                   // ── Hero copy ──────────────────────────────────────────

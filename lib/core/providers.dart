@@ -382,6 +382,7 @@ final Provider<LocationLifecycleManager> locationLifecycleManagerProvider =
     Provider<LocationLifecycleManager>((Ref ref) {
       final LocationLifecycleManager manager = LocationLifecycleManager(
         riderLocationNotifier: ref.watch(riderLocationNotifierProvider),
+        riderHeadingNotifier: ref.watch(riderHeadingNotifierProvider),
         locationService: ref.watch(locationServiceProvider),
         permissionService: ref.watch(locationPermissionServiceProvider),
         socket: ref.watch(socketClientProvider),

@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.meetcommerce.rider"
+    namespace = "com.freshcuts.rider"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +24,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.meetcommerce.rider"
+        applicationId = "com.freshcuts.rider"
         // Geolocator + flutter_secure_storage require API 23+.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion

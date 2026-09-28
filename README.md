@@ -5,8 +5,8 @@ Delivery-partner (rider) app for the Meet Commerce / FreshCuts platform.
 - Project title: **Meet Commerce – Rider Main**
 - Local folder: `meet-commerce-rider-main`
 - Flutter package: `meet_commerce_rider_main`
-- Android namespace / application id: `com.meetcommerce.rider`
-- iOS bundle id: `com.meetcommerce.rider`
+- Android namespace / application id: `com.freshcuts.rider`
+- iOS bundle id: `com.freshcuts.rider`
 - Display name: **Freashcut Rider**
 
 ## Backend
@@ -62,9 +62,9 @@ Three flavors exist and share the same commands:
 
 | Flavor | Android application id | App name |
 |---|---|---|
-| dev | `com.meetcommerce.rider.dev` | Freashcut Rider Dev |
-| staging | `com.meetcommerce.rider.staging` | Freashcut Rider Staging |
-| prod | `com.meetcommerce.rider` | Freashcut Rider |
+| dev | `com.freshcuts.rider.dev` | Freashcut Rider Dev |
+| staging | `com.freshcuts.rider.staging` | Freashcut Rider Staging |
+| prod | `com.freshcuts.rider` | Freashcut Rider |
 
 ```bash
 flutter run --flavor dev --dart-define=FLAVOR=dev
@@ -104,7 +104,7 @@ iOS. Ola credentials are never embedded in the app.
 
 Firebase Cloud Messaging is wired, but `lib/firebase_options.dart` and
 `android/app/google-services.json` currently hold **placeholder** values because
-no Meet Commerce Firebase project is registered for `com.meetcommerce.rider`
+no Meet Commerce Firebase project is registered for `com.freshcuts.rider`
 yet. Firebase initialization failure is non-fatal, so the app runs without push
 until the real configuration is added.
 
