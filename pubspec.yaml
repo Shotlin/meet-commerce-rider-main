@@ -63,6 +63,8 @@ dependencies:
   intl: ^0.20.2
   shimmer: ^3.0.0
   maplibre_gl: ^0.27.0
+  audioplayers: ^6.7.1
+  vibration: ^3.2.1
 
 dev_dependencies:
   flutter_test:
@@ -82,6 +84,7 @@ flutter:
   # Approved FreshCuts brand mark (identical asset to the customer app).
   assets:
     - assets/branding/
+    - assets/sounds/
 
   # FreshCuts brand typefaces — the same families the Meet Commerce customer
   # app uses (copied from `meet-commerce-mobile-main/assets/fonts`), so the

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/bootstrap.dart';
 import 'app/router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/delivery/presentation/incoming_order_alert_listener.dart';
 
 /// Entry point for the Meet Commerce Rider App.
 ///
@@ -32,6 +33,8 @@ class MeetCommerceRiderApp extends ConsumerWidget {
       title: 'Freashcut Rider',
       theme: AppTheme.light(),
       routerConfig: router,
+      builder: (BuildContext context, Widget? child) =>
+          IncomingOrderAlertListener(child: child ?? const SizedBox.shrink()),
     );
   }
 }
