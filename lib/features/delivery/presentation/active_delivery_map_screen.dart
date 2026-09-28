@@ -903,7 +903,7 @@ bool isRiderArrivedAtStore({
 /// Navigation`, and — as the ONLY way to confirm pickup — the
 /// `Scan pickup code` CTA into the verified scan → checklist flow.
 /// The seed's self-attested "mark as picked up" bypass was removed in
-/// Phase 11: the backend's `order_pickup_tokens` lifecycle is the real
+/// Phase 11: the backend's `order_pickup_scans` verification is the real
 /// store flow.
 class _AcceptedSheet extends ConsumerWidget {
   const _AcceptedSheet({required this.order});

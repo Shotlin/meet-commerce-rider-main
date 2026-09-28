@@ -171,17 +171,29 @@ class DeliveryRepository {
   /// Marks an order as delivered.
   Future<void> markDelivered(
     String orderId, {
+    String? otp,
     String? proofPhotoUrl,
     bool? demoMode,
   }) async {
     try {
       await _api.markDelivered(
         orderId,
+        otp: otp,
         proofPhotoUrl: proofPhotoUrl,
         demoMode: demoMode,
       );
     } on ApiException catch (e, stack) {
       _logAndTranslate('markDelivered', orderId, e, stack);
+      rethrow;
+    }
+  }
+
+  /// Re-sends the delivery OTP to the customer.
+  Future<void> resendDeliveryOtp(String orderId) async {
+    try {
+      await _api.resendDeliveryOtp(orderId);
+    } on ApiException catch (e, stack) {
+      _logAndTranslate('resendDeliveryOtp', orderId, e, stack);
       rethrow;
     }
   }

@@ -5,8 +5,8 @@ import '../data/order_parser.dart';
 /// Client-side, session-local status for the rider's single order in
 /// the current pickup-at-store session. Deliberately NOT part of
 /// [DeliveryOrder]'s wire representation — the backend has no concept
-/// of "needs scan" vs. "verified," only the QR pickup token's own
-/// lifecycle (ACTIVE/VERIFIED/CONSUMED/REVOKED/EXPIRED). This enum is
+/// of "needs scan" vs. "verified," only the scan record it keeps per order
+/// (`order_pickup_scans`: verified, then consumed at pickup). This enum is
 /// purely the app's local mirror of "how far has this rider gotten
 /// through pickup verification," reset each time a new pickup session
 /// starts.
@@ -59,9 +59,8 @@ class PickupChecklistItem {
 /// type rather than merged into [DeliveryOrder] since it's a one-shot scan
 /// result, not the order's persistent shape.
 ///
-/// [orderId] is the order this token resolved to — the QR itself carries
-/// no order reference (see backend `qrToken.js`), so callers only learn
-/// which order they scanned from this response, not from the QR content.
+/// [orderId] is the order the scanned code resolved to, as confirmed by the
+/// backend.
 @immutable
 class PickupVerification {
   const PickupVerification({

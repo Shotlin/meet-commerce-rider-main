@@ -20,6 +20,7 @@ import '../domain/delivery_outcome.dart';
 import 'cancel_delivery_sheet.dart';
 import 'collect_payment_sheet.dart';
 import 'delivery_details_sheet.dart';
+import 'delivery_otp_sheet.dart';
 import 'demo_complete_sheet.dart';
 
 /// The in-transit delivery card (design §13 bottom delivery card):
@@ -41,6 +42,10 @@ class InTransitSheet extends ConsumerWidget {
     final ActiveDeliveryController deliveryController = ref
         .watch<ActiveDeliveryController>(activeDeliveryControllerProvider);
     final bool isCod = order.paymentMethod.toUpperCase() == 'COD';
+    // Money is only collected when something is actually due: a COD order
+    // the customer already paid (wholly or partly) from their wallet has
+    // less — or nothing — left to collect.
+    final bool needsCollection = isCod && order.dueOnDelivery > 0;
     final CollectedPayment? collected = deliveryController.collectedPaymentFor(
       order.orderId,
     );
@@ -61,9 +66,9 @@ class InTransitSheet extends ConsumerWidget {
           // Design §13: "COD amount due if applicable" — the exact
           // customer amount the rider must collect, carried by the same
           // card (colour alone never carries it: icon + label too).
-          if (isCod && collected == null) ...<Widget>[
+          if (needsCollection && collected == null) ...<Widget>[
             const SizedBox(height: 8),
-            _CodDueChip(amount: order.totalAmount),
+            _CodDueChip(amount: order.dueOnDelivery),
           ],
           if (_hasNotes) ...<Widget>[
             const SizedBox(height: 8),
@@ -107,7 +112,7 @@ class InTransitSheet extends ConsumerWidget {
             leadingIcon: Icons.receipt_long_outlined,
             onPressed: () => unawaited(_onShowDetails(context)),
           ),
-          if (isCod) ...<Widget>[
+          if (needsCollection) ...<Widget>[
             const SizedBox(height: 8),
             AppButton(
               label: collected == null
@@ -125,8 +130,8 @@ class InTransitSheet extends ConsumerWidget {
           const SizedBox(height: 8),
           AppButton(
             label: 'Deliver',
-            onPressed: (!isCod || collected != null)
-                ? () => _onDeliver(context, collected, ref)
+            onPressed: (!needsCollection || collected != null)
+                ? () => unawaited(_onDeliver(context))
                 : null,
           ),
           if (showDemo) ...<Widget>[
@@ -188,26 +193,19 @@ class InTransitSheet extends ConsumerWidget {
         .recordCollectedPayment(order.orderId, payment);
   }
 
-  Future<void> _onDeliver(
-    BuildContext context,
-    CollectedPayment? collected,
-    WidgetRef ref,
-  ) async {
+  /// Opens the delivery-code sheet. Success needs no handling here: the
+  /// active-delivery state flips to delivered and the map screen shows the
+  /// completion summary from that state.
+  Future<void> _onDeliver(BuildContext context) async {
     final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
       context,
     );
-
-    final DeliveryResult result = await ref
-        .read<ActiveDeliveryController>(activeDeliveryControllerProvider)
-        .deliverDirect(order.orderId);
-    switch (result) {
-      case DeliveryResultSuccess():
+    final DeliveryOutcome outcome = await showDeliveryOtpSheet(context, order);
+    switch (outcome) {
+      case DeliveryOutcomeDelivered():
+      case DeliveryOutcomeCancelled():
         return;
-      case DeliveryResultStale(message: final String message):
-      case DeliveryResultFailure(message: final String message):
-      case DeliveryResultInvalidOtp(message: final String message):
-      case DeliveryResultOtpExpired(message: final String message):
-      case DeliveryResultProofFailed(message: final String message):
+      case DeliveryOutcomeFailed(message: final String message):
         messenger?.showSnackBar(SnackBar(content: Text(message)));
     }
   }

@@ -373,16 +373,14 @@ class DeliveryApi {
 
   /// Verifies a scanned invoice QR pickup code.
   ///
-  /// [payload] is the decoded QR content (`{token, v, sig}`) sent back
-  /// verbatim as the request body — the QR carries no order/assignment
-  /// id at all, so there's no `:id` in this route; the backend resolves
-  /// which order this is from the token itself and returns it as
-  /// `orderId` in the response. The backend re-validates the signature,
-  /// token status, and rider ownership itself. Returns the price-free
-  /// pickup checklist on success. Rejections surface as [ApiException]
-  /// with a specific `backendCode` (`INVALID_SIGNATURE`, `TOKEN_EXPIRED`,
-  /// `WRONG_RIDER`, `ALREADY_VERIFIED`, etc.) and a rider-readable
-  /// `message` the caller can show verbatim.
+  /// [payload] is `{'qr': <raw scanned string>}` — the FreshCuts order code
+  /// (`FRESHCUTS-ORDER|<orderNumber>|<orderId>`) printed on the invoice.
+  /// The backend checks that the code belongs to an order this rider has
+  /// accepted and not yet picked up, and returns the price-free packing
+  /// checklist. Rejections surface as [ApiException] with a specific
+  /// `backendCode` (`INVALID_QR`, `WRONG_RIDER`, `ORDER_NOT_ACCEPTED`,
+  /// `ALREADY_PICKED_UP`, `ORDER_NOT_FOUND`) and a rider-readable `message`
+  /// the caller can show verbatim.
   Future<PickupVerification> verifyScan(Map<String, dynamic> payload) async {
     final ApiEnvelope<PickupVerification> envelope = await _client
         .post<PickupVerification>(
@@ -426,26 +424,42 @@ class DeliveryApi {
     );
   }
 
-  /// Marks an order as delivered — direct completion by default (no
-  /// verification step). [proofPhotoUrl] and [demoMode] remain as
-  /// alternate completion paths:
-  /// - (none): direct completion.
-  /// - [proofPhotoUrl]: proof-photo fallback (URL from [uploadProof]).
+  /// Marks an order as delivered. The backend requires proof of delivery:
+  /// - [otp]: the 4-digit code the customer reads out from their app
+  ///   (the normal path);
+  /// - [proofPhotoUrl]: the proof-photo fallback (URL from [uploadProof])
+  ///   when the customer cannot share the code;
   /// - [demoMode]: dev-only demo completion. Pass `true` to enable;
   ///   `null` (default) omits the field entirely so production builds
   ///   never accidentally send `demoMode: false`.
+  ///
+  /// A body with none of the three is rejected by the backend
+  /// (`OTP_OR_PROOF_REQUIRED`), so callers always supply one.
   Future<void> markDelivered(
     String orderId, {
+    String? otp,
     String? proofPhotoUrl,
     bool? demoMode,
   }) async {
     final Map<String, dynamic> body = <String, dynamic>{};
+    if (otp != null) body['otp'] = otp;
     if (proofPhotoUrl != null) body['proofPhotoUrl'] = proofPhotoUrl;
     if (demoMode != null) body['demoMode'] = demoMode;
 
     await _client.patch<Object?>(
       '/delivery/orders/$orderId/deliver',
       body: body,
+      parseData: (Object? raw) => raw,
+    );
+  }
+
+  /// Asks the backend to generate a fresh delivery OTP and send it to the
+  /// customer. The new code is delivered to the customer only — it is
+  /// never returned to the rider.
+  Future<void> resendDeliveryOtp(String orderId) async {
+    await _client.patch<Object?>(
+      '/delivery/orders/$orderId/resend-otp',
+      body: const <String, dynamic>{},
       parseData: (Object? raw) => raw,
     );
   }

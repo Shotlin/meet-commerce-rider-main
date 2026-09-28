@@ -12,7 +12,6 @@ import '../../../shared/widgets/app_bottom_sheet.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../domain/collected_payment.dart';
-import '../../../core/providers.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/app_logger.dart';
 import '../data/delivery_repository.dart';
@@ -80,7 +79,7 @@ class _CollectPaymentSheetBodyState
 
   double get _cash => double.tryParse(_cashController.text) ?? 0;
   double get _upi => double.tryParse(_upiController.text) ?? 0;
-  double get _remaining => widget.order.totalAmount - (_cash + _upi);
+  double get _remaining => widget.order.dueOnDelivery - (_cash + _upi);
   bool get _isBalanced => _remaining.abs() <= _kCollectionTolerance;
 
   bool _posting = false;
@@ -156,7 +155,7 @@ class _CollectPaymentSheetBodyState
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
-              'Order total: ₹${widget.order.totalAmount.toStringAsFixed(2)}',
+              'Amount to collect: ₹${widget.order.dueOnDelivery.toStringAsFixed(2)}',
               style: AppTypography.body.copyWith(color: AppColors.muted),
             ),
             const SizedBox(height: 16),
@@ -266,7 +265,7 @@ class _CollectPaymentSheetBodyState
       queryParameters: <String, String>{
         'pa': upiId,
         'pn': DEFAULT_UPI_PAYEE_NAME,
-        'am': order.totalAmount.toStringAsFixed(2),
+        'am': order.dueOnDelivery.toStringAsFixed(2),
         'cu': 'INR',
         'tn': 'Order ${order.orderNumber}',
       },

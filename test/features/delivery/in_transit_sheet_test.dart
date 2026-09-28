@@ -16,6 +16,7 @@ import '../../helpers/fake_delivery_api.dart';
 import '../../helpers/fake_socket_client.dart';
 
 DeliveryOrder _order({
+  double? amountDue,
   String? notes,
   String? instructions,
   String paymentMethod = 'COD',
@@ -26,6 +27,7 @@ DeliveryOrder _order({
     orderNumber: 'ORD-1001',
     assignmentStatus: AssignmentStatus.inTransit,
     totalAmount: totalAmount,
+    amountDue: amountDue,
     paymentMethod: paymentMethod,
     riderEarning: 52,
     estimatedDuration: 15,
@@ -83,6 +85,32 @@ Future<void> _pumpSheet(
 }
 
 void main() {
+  testWidgets('a COD order part-paid from the wallet asks for the amount '
+      'still due, not the full total', (WidgetTester tester) async {
+    final DeliveryOrder order = _order(amountDue: 150);
+    final ActiveDeliveryController controller = ActiveDeliveryController()
+      ..setActiveDelivery(order);
+    await _pumpSheet(tester, order: order, controller: controller);
+
+    expect(find.text('Collect ₹150 on delivery'), findsOneWidget);
+    expect(find.text('Collect ₹380 on delivery'), findsNothing);
+  });
+
+  testWidgets('a COD order fully covered by the wallet needs no collection '
+      'and can be delivered straight away', (WidgetTester tester) async {
+    final DeliveryOrder order = _order(amountDue: 0);
+    final ActiveDeliveryController controller = ActiveDeliveryController()
+      ..setActiveDelivery(order);
+    await _pumpSheet(tester, order: order, controller: controller);
+
+    expect(find.textContaining('Collect'), findsNothing);
+    expect(find.text('Collect payment'), findsNothing);
+    final AppButton deliver = tester.widget<AppButton>(
+      find.widgetWithText(AppButton, 'Deliver'),
+    );
+    expect(deliver.onPressed, isNotNull);
+  });
+
   testWidgets('shows the drop card, call/navigate, and Deliver for a '
       'prepaid order without a COD chip', (WidgetTester tester) async {
     await _pumpSheet(tester, order: _order(paymentMethod: 'ONLINE'));

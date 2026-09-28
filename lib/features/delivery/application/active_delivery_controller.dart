@@ -14,7 +14,7 @@ import 'assignment_state_machine.dart';
 
 /// Discriminated outcome of the delivery-lifecycle actions on
 /// [ActiveDeliveryController]: [ActiveDeliveryController.markPickedUp],
-/// [ActiveDeliveryController.deliverDirect],
+/// [ActiveDeliveryController.deliverWithOtp],
 /// [ActiveDeliveryController.deliverWithProof], and
 /// [ActiveDeliveryController.deliverWithDemoMode].
 ///
@@ -143,7 +143,7 @@ class ActiveDeliveryController extends ChangeNotifier {
   ///
   /// Both are nullable for test ergonomics — tests that only drive
   /// [setActiveDelivery] / [applyExternalStatus] can pass `null` for
-  /// either. Network methods ([markPickedUp], [deliverDirect],
+  /// either. Network methods ([markPickedUp], [deliverWithOtp],
   /// [deliverWithProof], [deliverWithDemoMode]) require a non-null
   /// repository; calling them without one returns a
   /// [DeliveryResultFailure].
@@ -371,21 +371,39 @@ class ActiveDeliveryController extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Deliver directly (no OTP / proof step)
+  // Deliver with the customer's OTP
   // ---------------------------------------------------------------------------
 
-  /// Marks the active order as delivered immediately — no OTP or
-  /// proof-photo verification. COD collection (if any) has already
-  /// happened via [recordCollectedPayment] before this is called.
-  Future<DeliveryResult> deliverDirect(String orderId) async {
-    return _runAction('deliverDirect', orderId, () async {
+  /// Marks the active order as delivered using the 4-digit code the
+  /// customer reads out from their app. COD collection (if any) has
+  /// already been persisted server-side via [recordCollectedPayment]'s
+  /// collect sheet; the backend hard-blocks a COD delivery with money
+  /// due and no confirmed collection.
+  ///
+  /// A wrong code surfaces as [DeliveryResultInvalidOtp]; too many wrong
+  /// codes (`OTP_ATTEMPTS_EXCEEDED`) surfaces the backend's message so the
+  /// rider is steered to resend the code or use a proof photo.
+  Future<DeliveryResult> deliverWithOtp(String orderId, String otp) async {
+    return _runAction('deliverWithOtp', orderId, () async {
       final DeliveryRepository repository = _requireRepository();
-      // Big Phase 14: the collection is persisted server-side before
-      // this call (the collect sheet posts it); the backend hard-blocks
-      // a COD delivery without a confirmed collection.
-      await repository.markDelivered(orderId);
+      await repository.markDelivered(orderId, otp: otp.trim());
       return _completeDelivery(orderId);
-    });
+    }, mapBackendCode: _mapDeliverError);
+  }
+
+  /// Asks the backend to send the customer a fresh delivery OTP. Returns
+  /// `null` on success, or a rider-readable failure message.
+  Future<String?> resendDeliveryOtp(String orderId) async {
+    final DeliveryRepository? repository = _repository;
+    if (repository == null) return 'Network unavailable';
+    try {
+      await repository.resendDeliveryOtp(orderId);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (e) {
+      return _describeError(e);
+    }
   }
 
   // ---------------------------------------------------------------------------

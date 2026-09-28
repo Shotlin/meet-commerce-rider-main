@@ -168,14 +168,19 @@ class SessionController extends ChangeNotifier {
     _registerFcmToken();
   }
 
-  /// Registers the FCM token with the Bakaloo backend after login.
+  /// Registers the FCM token with the Meet Commerce backend after login.
+  ///
+  /// The token is labelled `app: 'rider'` so the backend sends it only
+  /// delivery offers/reminders — never customer campaigns — and so the
+  /// rider app's token never displaces the customer app's for the same
+  /// phone number.
   void _registerFcmToken() {
     final String? token = NotificationService.instance.fcmToken;
     if (token == null || token.isEmpty) return;
     _apiClient
         .post<Object?>(
           '/notifications/tokens',
-          body: <String, dynamic>{'token': token, 'platform': 'android'},
+          body: fcmRegistrationBody(token),
           parseData: (Object? raw) => raw,
         )
         .then(
@@ -238,4 +243,19 @@ class SessionController extends ChangeNotifier {
     }
     return null;
   }
+}
+
+/// Body for `POST /notifications/tokens`: the device token, the platform it
+/// belongs to, and the app label the backend uses to route pushes.
+@visibleForTesting
+Map<String, dynamic> fcmRegistrationBody(
+  String token, {
+  TargetPlatform? platform,
+}) {
+  final TargetPlatform p = platform ?? defaultTargetPlatform;
+  return <String, dynamic>{
+    'token': token,
+    'platform': p == TargetPlatform.iOS ? 'ios' : 'android',
+    'app': 'rider',
+  };
 }

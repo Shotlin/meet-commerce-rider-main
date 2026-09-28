@@ -18,6 +18,7 @@ import '../application/active_delivery_controller.dart';
 import '../application/pickup_session_controller.dart';
 import '../data/delivery_repository.dart';
 import '../domain/delivery_order.dart';
+import '../domain/pickup_qr.dart';
 import '../domain/pickup_session.dart';
 import 'pickup_checklist_sheet.dart';
 
@@ -59,14 +60,11 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
   /// confusion about which order was matched, especially mid-batch).
   String? _matchedOrderNumber;
 
-  /// Raw QR strings already sent to `verify-scan` this session. The QR
-  /// carries no order id (see [_decodeQrPayload]), so unlike before, we
-  /// can't short-circuit a duplicate scan by looking up an order's local
-  /// status before calling the server — we don't know which order a scan
-  /// is until the server tells us. This dedupes on the literal scanned
-  /// string instead, which still catches the common case (rider points
-  /// the scanner at the same slip twice in a row) without a network call;
-  /// anything it misses is still caught server-side (ALREADY_VERIFIED).
+  /// Raw QR strings already sent to `verify-scan` this session — a duplicate
+  /// scan of the same code (the rider holding the scanner on the slip) is
+  /// short-circuited without a network call; anything it misses is still
+  /// handled server-side, where re-verifying the same accepted order is
+  /// idempotent.
   final Set<String> _sentThisSession = <String>{};
 
   /// Zoom scale (0.0–1.0) at the start of the current pinch gesture — the
@@ -184,37 +182,38 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
     }
   }
 
-  /// Decodes the compact `version.token.sig` wire format printed on
-  /// invoice QR codes (see backend `invoiceGenerator.js#buildQrPayload`).
-  /// A dot-delimited string rather than JSON keeps the printed QR small —
-  /// neither field can contain '.', so a plain split is safe. There is no
-  /// order id in the QR at all: the server resolves which order this is
-  /// from the token itself, and returns it in the response.
-  Map<String, dynamic>? _decodeQrPayload(String raw) {
-    final List<String> parts = raw.split('.');
-    if (parts.length != 3) return null;
-    final int? version = int.tryParse(parts[0]);
-    if (version == null) return null;
-    final String token = parts[1];
-    final String sig = parts[2];
-    if (token.isEmpty || sig.isEmpty) return null;
-    return <String, dynamic>{'token': token, 'v': version, 'sig': sig};
-  }
-
   Future<void> _handleScannedPayload(String raw) async {
-    final Map<String, dynamic>? payload = _decodeQrPayload(raw);
-    if (payload == null) {
+    final ParsedOrderQr? parsed = parseOrderQr(raw);
+    if (parsed == null) {
       AppLogger.warn(
         LogTopic.delivery,
-        'QR payload did not match the expected format',
+        'QR payload is not a FreshCuts order code',
       );
       unawaited(HapticFeedback.heavyImpact());
       setState(
         () => _errorMessage =
-            'Invalid QR code — make sure the whole code is inside the frame and try again.',
+            'This is not a FreshCuts order code — scan the code on the '
+            'invoice and keep the whole code inside the frame.',
       );
       return;
     }
+
+    // The rider has exactly one active order. A code for a different order
+    // is the wrong bag: say so immediately, without a network round trip.
+    final DeliveryOrder? current = ref
+        .read(activeDeliveryControllerProvider)
+        .current;
+    if (current != null && parsed.orderId != current.orderId.toLowerCase()) {
+      unawaited(HapticFeedback.heavyImpact());
+      setState(
+        () => _errorMessage =
+            'This code is for order ${parsed.orderNumber}, not your '
+            'current order #${current.orderNumber}. Check the bag.',
+      );
+      return;
+    }
+
+    final Map<String, dynamic> payload = <String, dynamic>{'qr': raw.trim()};
 
     // Client-side short-circuit for the same slip scanned twice in a row
     // (item 6: no duplicate scans) — see field doc on _sentThisSession for

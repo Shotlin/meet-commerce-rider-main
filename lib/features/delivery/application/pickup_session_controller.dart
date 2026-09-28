@@ -7,8 +7,8 @@ import '../domain/pickup_session.dart';
 /// Tracks QR-pickup progress for the rider's **single** active order —
 /// purely client-side, session-local state layered on top of
 /// [ActiveDeliveryController]. The backend has no notion of "needs scan"
-/// vs. "verified": that's the `order_pickup_tokens` row's own
-/// ACTIVE/VERIFIED/CONSUMED lifecycle, enforced server-side on every
+/// vs. "verified": that's the backend's `order_pickup_scans` record (verified at
+/// scan time, consumed on confirmed pickup), enforced server-side on every
 /// `verify-scan`/`markPickedUp` call regardless of what this controller
 /// thinks — this is a UI convenience so the scanner/checklist surfaces
 /// can show where the rider is without re-querying token status on

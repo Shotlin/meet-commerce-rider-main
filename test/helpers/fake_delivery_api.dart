@@ -20,6 +20,7 @@ class CapturedMarkDelivered {
   /// Constructs a captured mark-delivered call.
   const CapturedMarkDelivered({
     required this.orderId,
+    this.otp,
     this.proofPhotoUrl,
     this.demoMode,
     this.cashCollected,
@@ -28,6 +29,9 @@ class CapturedMarkDelivered {
 
   /// The order id passed to markDelivered.
   final String orderId;
+
+  /// Customer OTP if supplied.
+  final String? otp;
 
   /// Proof photo URL if supplied.
   final String? proofPhotoUrl;
@@ -135,6 +139,12 @@ class FakeDeliveryApi implements DeliveryApi {
 
   /// List of order ids passed to [markPickedUp].
   final List<String> markPickedUpCalls = <String>[];
+
+  /// When set, `markDelivered` throws this instead of recording the call.
+  Object? markDeliveredError;
+
+  /// Order ids `resendDeliveryOtp` was called for.
+  final List<String> resendOtpCalls = <String>[];
 
   /// List of captured [markDelivered] calls.
   final List<CapturedMarkDelivered> markDeliveredCalls =
@@ -269,25 +279,28 @@ class FakeDeliveryApi implements DeliveryApi {
   @override
   Future<void> markDelivered(
     String orderId, {
+    String? otp,
     String? proofPhotoUrl,
     bool? demoMode,
     double? cashCollected,
     double? upiCollected,
   }) async {
-    assert(
-      demoMode == true,
-      'FakeDeliveryApi.markDelivered: expected demoMode==true '
-      'but got demoMode=$demoMode',
-    );
+    if (markDeliveredError != null) throw markDeliveredError!;
     markDeliveredCalls.add(
       CapturedMarkDelivered(
         orderId: orderId,
+        otp: otp,
         proofPhotoUrl: proofPhotoUrl,
         demoMode: demoMode,
         cashCollected: cashCollected,
         upiCollected: upiCollected,
       ),
     );
+  }
+
+  @override
+  Future<void> resendDeliveryOtp(String orderId) async {
+    resendOtpCalls.add(orderId);
   }
 
   @override

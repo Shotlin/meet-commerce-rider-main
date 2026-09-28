@@ -31,6 +31,7 @@ class DeliveryOrder {
     required this.assignmentStatus,
     this.orderStatus,
     required this.totalAmount,
+    this.amountDue,
     required this.paymentMethod,
     required this.riderEarning,
     this.estimatedDistance,
@@ -110,6 +111,7 @@ class DeliveryOrder {
       assignmentStatus: assignmentStatus,
       orderStatus: OrderParser.readStringOpt(j, 'orderStatus', 'order_status'),
       totalAmount: OrderParser.readMoney(j, 'totalAmount', 'total_amount'),
+      amountDue: OrderParser.readDoubleOpt(j, 'amountDue', 'amount_due'),
       paymentMethod: OrderParser.readString(
         j,
         'paymentMethod',
@@ -179,6 +181,7 @@ class DeliveryOrder {
     'assignmentStatus': assignmentStatus.wire,
     if (orderStatus != null) 'orderStatus': orderStatus,
     'totalAmount': totalAmount,
+    if (amountDue != null) 'amountDue': amountDue,
     'paymentMethod': paymentMethod,
     'riderEarning': riderEarning,
     if (estimatedDistance != null) 'estimatedDistance': estimatedDistance,
@@ -201,6 +204,7 @@ class DeliveryOrder {
     AssignmentStatus? assignmentStatus,
     String? orderStatus,
     double? totalAmount,
+    double? amountDue,
     String? paymentMethod,
     double? riderEarning,
     double? estimatedDistance,
@@ -222,6 +226,7 @@ class DeliveryOrder {
       assignmentStatus: assignmentStatus ?? this.assignmentStatus,
       orderStatus: orderStatus ?? this.orderStatus,
       totalAmount: totalAmount ?? this.totalAmount,
+      amountDue: amountDue ?? this.amountDue,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       riderEarning: riderEarning ?? this.riderEarning,
       estimatedDistance: estimatedDistance ?? this.estimatedDistance,
@@ -257,6 +262,16 @@ class DeliveryOrder {
 
   /// Total order amount, rounded to 2 decimal places.
   final double totalAmount;
+
+  /// What the rider must actually collect at the door, computed by the
+  /// server: the order total less any wallet slice already paid, and zero
+  /// once the order is paid. Null only for a backend that predates the
+  /// field — use [dueOnDelivery] to read it.
+  final double? amountDue;
+
+  /// The COD amount to collect on delivery. Falls back to [totalAmount]
+  /// when the server did not send [amountDue].
+  double get dueOnDelivery => amountDue ?? totalAmount;
 
   /// Payment method (e.g. `ONLINE`, `COD`).
   final String paymentMethod;
@@ -356,6 +371,7 @@ class DeliveryOrder {
     if (other.assignmentStatus != assignmentStatus) return false;
     if (other.orderStatus != orderStatus) return false;
     if (other.totalAmount != totalAmount) return false;
+    if (other.amountDue != amountDue) return false;
     if (other.paymentMethod != paymentMethod) return false;
     if (other.riderEarning != riderEarning) return false;
     if (other.estimatedDistance != estimatedDistance) return false;
@@ -383,6 +399,7 @@ class DeliveryOrder {
     assignmentStatus,
     orderStatus,
     totalAmount,
+    amountDue,
     paymentMethod,
     riderEarning,
     estimatedDistance,
