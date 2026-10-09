@@ -42,7 +42,13 @@ class QrScanScreen extends ConsumerStatefulWidget {
 class _QrScanScreenState extends ConsumerState<QrScanScreen>
     with SingleTickerProviderStateMixin {
   final MobileScannerController _scanner = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
+    // QR only (faster, fewer false locks than scanning every format) and
+    // `normal` speed with a short timeout so a held code that was rejected
+    // once (wrong bag, bad network) is read again instead of being
+    // swallowed as a "duplicate" until the camera moves away.
+    formats: const <BarcodeFormat>[BarcodeFormat.qrCode],
+    detectionSpeed: DetectionSpeed.normal,
+    detectionTimeoutMs: 700,
   );
 
   late final AnimationController _scanLineController = AnimationController(
@@ -297,6 +303,59 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
     }
   }
 
+  /// Fallback when a code genuinely cannot be read (cracked screen, glare,
+  /// smudged print). The rider types the order number printed on the slip;
+  /// it must equal their current order's number exactly, then the normal
+  /// verify flow runs with the equivalent code.
+  Future<void> _enterOrderNumberManually() async {
+    final DeliveryOrder? current = ref
+        .read(activeDeliveryControllerProvider)
+        .current;
+    if (current == null) return;
+    final TextEditingController input = TextEditingController();
+    final String? typed = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Enter order number'),
+        content: TextField(
+          controller: input,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(hintText: 'FC-XXX-YYYYMMDD-0000'),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(input.text),
+            child: const Text('Verify'),
+          ),
+        ],
+      ),
+    );
+    input.dispose();
+    if (typed == null || !mounted) return;
+    final String cleaned = typed.trim().replaceFirst('#', '').toUpperCase();
+    if (cleaned != current.orderNumber.toUpperCase()) {
+      setState(
+        () => _errorMessage =
+            'That number does not match your current order '
+            '#${current.orderNumber}. Check the bag.',
+      );
+      return;
+    }
+    setState(() => _processing = true);
+    try {
+      await _handleScannedPayload(
+        '$kOrderQrPrefix|${current.orderNumber}|${current.orderId}',
+      );
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final PickupSessionController session = ref.watch(
@@ -363,7 +422,10 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
                     child: MobileScanner(
                       controller: _scanner,
                       onDetect: _onDetect,
-                      scanWindow: scanWindow,
+                      // No `scanWindow`: restricting detection to the visual
+                      // frame dropped codes whenever the preview was cropped
+                      // or the frame and camera coordinates disagreed. The
+                      // frame is only a guide; the whole preview is decoded.
                       overlayBuilder: (BuildContext context, BoxConstraints _) {
                         return AnimatedBuilder(
                           animation: _scanLineController,
@@ -387,6 +449,24 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
                     _matchedOrderNumber == null &&
                     _errorMessage == null)
                   _ScanInstruction(top: scanWindow.bottom + 20),
+                if (_permission == CameraPermissionState.granted &&
+                    _matchedOrderNumber == null)
+                  Positioned(
+                    top: scanWindow.bottom + 56,
+                    left: 24,
+                    right: 24,
+                    child: Center(
+                      child: TextButton(
+                        onPressed: _processing
+                            ? null
+                            : _enterOrderNumberManually,
+                        child: const Text(
+                          "Can't scan? Enter order number",
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
                 _TopBar(onClose: () => context.pop()),
                 if (pendingOrderNumber.isNotEmpty &&
                     _matchedOrderNumber == null)
